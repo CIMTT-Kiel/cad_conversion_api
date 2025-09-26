@@ -1,0 +1,21 @@
+services:
+  cad-service:
+    build: ./cad_service
+    ports:
+      - "8000:8000"
+    depends_on:
+      - vecset-service
+
+  vecset-service:
+    build: ./vecset_service
+    ports:
+      - "8001:8001"
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    volumes:
+      - ./models:/models  # mount checkpoint
