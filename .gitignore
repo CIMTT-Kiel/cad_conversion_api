@@ -1,0 +1,11 @@
+*.pth
+
+python-eggs/
+*.egg-info/
+*.egg
+
+.venv/
+uv.lock
+
+
+build/
