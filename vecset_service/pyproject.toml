@@ -17,6 +17,7 @@ dependencies = [
     "mcubes",
     "numpy",
     "einops>=0.8.1",
+    "python-multipart"
 ]
 
 

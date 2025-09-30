@@ -6,20 +6,26 @@ RUN apt-get update && apt-get install -y \
     libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
+
+# The installer requires curl (and certificates) to download the release archive
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates
+
+# Download the latest installer
+ADD https://astral.sh/uv/install.sh /uv-installer.sh
+
+# Run the installer then remove it
+RUN sh /uv-installer.sh && rm /uv-installer.sh
+
+# Ensure the installed binary is on the `PATH`
+ENV PATH="/root/.local/bin/:$PATH"
+
 WORKDIR /app
 
-# Install uv
-RUN pip3 install uv
-
-# Copy pyproject.toml
-COPY pyproject.toml .
-
-# Create venv and install dependencies via uv
-RUN python3 -m venv .venv && \
-    .venv/bin/uv install
-
-# Copy source code
+# Copy code
 COPY . .
+
+# Install dependencies via uv inside venv
+RUN uv sync
 
 EXPOSE 8001
 

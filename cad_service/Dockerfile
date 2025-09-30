@@ -29,4 +29,4 @@ RUN uv sync
 EXPOSE 8000
 
 # Start uvicorn using venv's python
-CMD ["/app/.venv/bin/uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["/app/.venv/bin/uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
