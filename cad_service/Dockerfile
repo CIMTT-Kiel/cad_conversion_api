@@ -1,32 +1,49 @@
+# Dockerfile for CAD Conversion Service
 FROM python:3.11-slim
 
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Create non-root user for security
+RUN groupadd --gid 1000 appuser && \
+    useradd --uid 1000 --gid appuser --shell /bin/bash --create-home appuser
+
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential libgl1 libglib2.0-0 \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libgl1 \
+    libglib2.0-0 \
+    curl \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# The installer requires curl (and certificates) to download the release archive
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates
+# Install uv for faster dependency management
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
 
-# Download the latest installer
-ADD https://astral.sh/uv/install.sh /uv-installer.sh
-
-# Run the installer then remove it
-RUN sh /uv-installer.sh && rm /uv-installer.sh
-
-# Ensure the installed binary is on the `PATH`
-ENV PATH="/root/.local/bin/:$PATH"
-
+# Set working directory
 WORKDIR /app
 
 
-# Copy code
+
+
+# Copy application code and change ownership
 COPY . .
+# Install dependencies
+RUN uv sync 
+RUN chown -R appuser:appuser /app
 
-# Install dependencies via uv inside venv
-RUN uv sync
+# Create directories for temporary files
+RUN mkdir -p /tmp/cad_converter && \
+    chown -R appuser:appuser /tmp/cad_converter
 
-EXPOSE 8000
+# Switch to non-root user
+USER appuser
 
-# Start uvicorn using venv's python
-CMD ["/app/.venv/bin/uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# Expose port
+EXPOSE 8001
+
+# Start application
+CMD ["/app/.venv/bin/uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]

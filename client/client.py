@@ -1,81 +1,248 @@
-import requests
-from pathlib import Path
+"""
+CAD Converter Client
+
+Simple client for interacting with CAD conversion services.
+Downloads actual files from the services.
+"""
+
+import logging
 import shutil
 import tempfile
+from pathlib import Path
+from typing import Optional, Union
+
+import requests
+
+logger = logging.getLogger(__name__)
+
+
+class CADClientError(Exception):
+    """Exception for CAD client errors."""
+    pass
+
 
 class CADConverterClient:
     """
-    Provides functions to convert CAD data for ML Pipelines via FastAPI Services. 
-
-    Args:
-        cad_url (str): URL of the CAD conversion service.
-        vecset_url (str): URL of the VecSet conversion service.
+    Simple client for CAD conversion services.
+    
     Example:
-        client = CADClient(cad_url="http://localhost:8000", vecset_url="http://localhost:8001")
-        stl_file = client.convert_to_stl("model.step", "target_path/model.stl")
+        client = CADConverterClient(
+            cad_url="http://localhost:8001",
+            vecset_url="http://localhost:8002"
+        )
+        stl_file = client.convert_to_stl("model.step", "output.stl")
     """
 
-    def __init__(self, cad_url: str, vecset_url: str):
-        self.cad_url = cad_url.rstrip("/")
-        self.vecset_url = vecset_url.rstrip("/")
-
-    def _upload_file(self, url: str, file_path: Path, params: dict = None):
-        file_path = Path(file_path)
-        if not file_path.exists():
-            raise FileNotFoundError(f"{file_path} does not exist")
-
-        with open(file_path, "rb") as f:
-            response = requests.post(url, files={"file": f}, params=params)
-        response.raise_for_status()
-        return response.json()
-    
-    def _extract_filename(self, file_path: str, suffix : str) -> str:
-        return Path("./") / Path(file_path).with_suffix(suffix).name
-
-    def convert_to_stl(self, input_file: str, output_file: str = None):
+    def __init__(self, cad_url: str, vecset_url: Optional[str] = None, timeout: int = 300):
         """
-        Convert CAD-Geometry file to STL.
-        """
-        result = self._upload_file(f"{self.cad_url}/convert", input_file, params={"target_format": "stl"})
-        converted_file = Path(result["file"])
-
-        output_file = Path(output_file) if output_file else self._extract_filename(input_file, ".stl")
-        assert output_file.suffix == ".stl", "Output file must have .stl extension"
-
-        shutil.copy(converted_file, output_file)
-
-        return output_file
-
-    def convert_to_ply(self, input_file: str, output_file: str = None):
-        """
-        Convert CAD file to PLY.
-        """
+        Initialize client.
         
-        result = self._upload_file(f"{self.cad_url}/convert", input_file, params={"target_format": "ply"})
-        converted_file = Path(result["file"])
-
-        output_file = Path(output_file) if output_file else self._extract_filename(input_file, ".ply")
-        assert output_file.suffix == ".ply", "Output file must have .ply extension"
-
-        shutil.copy(converted_file, output_file)
-        return output_file
-
-    def convert_to_vecset(self, input_file: str, output_file: str = None, export_reconstruction: bool = False):
+        Args:
+            cad_url: CAD service URL
+            vecset_url: VecSet service URL (optional)
+            timeout: Request timeout in seconds
         """
-        Convert CAD file (STEP, JT, OBJ, STL) to VecSet (.npy).
-        Optionally export reconstructed STL.
+        self.cad_url = cad_url.rstrip("/")
+        self.vecset_url = vecset_url.rstrip("/") if vecset_url else None
+        self.timeout = timeout
+        
+        logger.info(f"CAD client initialized: {self.cad_url}")
+
+    def _upload_and_download(
+        self,
+        url: str,
+        file_path: Union[str, Path],
+        output_path: Path,
+        params: dict = None
+    ) -> Path:
         """
-        output_file = Path(output_file) if output_file else self._extract_filename(input_file, ".npy")
-        assert output_file.suffix == ".npy", "Output file must have .ply extension"
+        Upload file and download the converted result.
+        
+        Args:
+            url: Service endpoint
+            file_path: File to upload
+            output_path: Where to save the result
+            params: Additional parameters
+            
+        Returns:
+            Path to downloaded file
+        """
+        file_path = Path(file_path)
+        
+        if not file_path.exists():
+            raise CADClientError(f"File not found: {file_path}")
+        
+        logger.info(f"Uploading {file_path.name} to {url}")
+        
+        try:
+            # Upload file
+            with open(file_path, "rb") as f:
+                response = requests.post(
+                    url,
+                    files={"file": (file_path.name, f)},
+                    data=params or {},
+                    timeout=self.timeout,
+                    stream=True  # Stream for large files
+                )
+            
+            response.raise_for_status()
+            
+            # Save response to output file
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(output_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            
+            if not output_path.exists():
+                raise CADClientError(f"Failed to save result to {output_path}")
+            
+            logger.info(f"Result saved: {output_path}")
+            return output_path
+            
+        except requests.RequestException as e:
+            raise CADClientError(f"Request failed: {str(e)}") from e
+        except Exception as e:
+            raise CADClientError(f"Download failed: {str(e)}") from e
 
-        result = self._upload_file(
-            f"{self.cad_url}/convert",
-            input_file,
-            params={"target_format": "vecset"}
-        )
+    def convert_to_stl(
+        self,
+        input_file: Union[str, Path],
+        output_file: Optional[Union[str, Path]] = None
+    ) -> Path:
+        """
+        Convert CAD file to STL format.
+        
+        Args:
+            input_file: Input CAD file
+            output_file: Output STL file (optional)
+            
+        Returns:
+            Path to STL file
+        """
+        input_path = Path(input_file)
+        output_path = Path(output_file) if output_file else Path(f"./{input_path.stem}.stl")
+        
+        if output_path.suffix.lower() != ".stl":
+            raise CADClientError("Output file must have .stl extension")
+        
+        logger.info(f"Converting to STL: {input_path} -> {output_path}")
+        
+        try:
+            return self._upload_and_download(
+                f"{self.cad_url}/convert",
+                input_path,
+                output_path,
+                {"target_format": "stl"}
+            )
+        except Exception as e:
+            raise CADClientError(f"STL conversion failed: {str(e)}") from e
 
-        # The response may contain path to npy file from VecSet service
-        npy_file = Path(result["file"])
+    def convert_to_ply(
+        self,
+        input_file: Union[str, Path],
+        output_file: Optional[Union[str, Path]] = None
+    ) -> Path:
+        """
+        Convert CAD file to PLY format.
+        
+        Args:
+            input_file: Input CAD file
+            output_file: Output PLY file (optional)
+            
+        Returns:
+            Path to PLY file
+        """
+        input_path = Path(input_file)
+        output_path = Path(output_file) if output_file else Path(f"./{input_path.stem}.ply")
+        
+        if output_path.suffix.lower() != ".ply":
+            raise CADClientError("Output file must have .ply extension")
+        
+        logger.info(f"Converting to PLY: {input_path} -> {output_path}")
+        
+        try:
+            return self._upload_and_download(
+                f"{self.cad_url}/convert",
+                input_path,
+                output_path,
+                {"target_format": "ply"}
+            )
+        except Exception as e:
+            raise CADClientError(f"PLY conversion failed: {str(e)}") from e
 
-        shutil.copy(npy_file, output_file)
-        return output_file
+    def convert_to_vecset(
+        self,
+        input_file: Union[str, Path],
+        output_file: Optional[Union[str, Path]] = None,
+        export_reconstruction: bool = False
+    ) -> Path:
+        """
+        Convert CAD file to VecSet format.
+        
+        Args:
+            input_file: Input CAD file
+            output_file: Output .npy file (optional)
+            export_reconstruction: Export reconstructed STL (not supported via CAD service)
+            
+        Returns:
+            Path to .npy file
+        """
+        input_path = Path(input_file)
+        output_path = Path(output_file) if output_file else Path(f"./{input_path.stem}.npy")
+        
+        if output_path.suffix.lower() != ".npy":
+            raise CADClientError("Output file must have .npy extension")
+        
+        logger.info(f"Converting to VecSet: {input_path} -> {output_path}")
+        
+        try:
+            return self._upload_and_download(
+                f"{self.cad_url}/convert",
+                input_path,
+                output_path,
+                {"target_format": "vecset"}
+            )
+        except Exception as e:
+            raise CADClientError(f"VecSet conversion failed: {str(e)}") from e
+
+    def get_service_status(self) -> dict:
+        """
+        Get status of connected services.
+        
+        Returns:
+            Service status information
+        """
+        status = {}
+        
+        # Check CAD service
+        try:
+            response = requests.get(f"{self.cad_url}/health", timeout=10)
+            status["cad_service"] = {
+                "status": "healthy" if response.status_code == 200 else "unhealthy",
+                "url": self.cad_url
+            }
+        except Exception as e:
+            status["cad_service"] = {
+                "status": "unreachable",
+                "url": self.cad_url,
+                "error": str(e)
+            }
+        
+        # Check VecSet service if configured
+        if self.vecset_url:
+            try:
+                response = requests.get(f"{self.vecset_url}/health", timeout=10)
+                status["vecset_service"] = {
+                    "status": "healthy" if response.status_code == 200 else "unhealthy",
+                    "url": self.vecset_url
+                }
+            except Exception as e:
+                status["vecset_service"] = {
+                    "status": "unreachable",
+                    "url": self.vecset_url,
+                    "error": str(e)
+                }
+        
+        return status
