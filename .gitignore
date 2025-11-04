@@ -1,11 +1,17 @@
 *.pth
 
+__pycache__/
 python-eggs/
 *.egg-info/
 *.egg
 
 .venv/
+venv/
 uv.lock
 
 
 build/
+
+.DS_Store
+
+data/
