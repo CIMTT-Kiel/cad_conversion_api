@@ -6,7 +6,6 @@ about static stats like volume, faces, face_types, etc.
 """
 
 import FreeCAD
-import FreeCADGui as Gui
 import Part
 from collections import defaultdict
 from typing import Dict, List, Tuple

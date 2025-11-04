@@ -3,15 +3,18 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "client"
-version = "2.0.0"
-description = "Python client for CAD Preprocessing API - Conversion, Embedding & Analysis"
+name = "analyser_service"
+version = "0.1.0"
+description = "CAD analyser service with FreeCAD for extracting geometry statistics"
 authors = [{name="Michel Kruse"}]
 dependencies = [
-    "requests>=2.31.0",
-    "pyyaml>=6.0",
+    "fastapi",
+    "uvicorn",
+    "requests",
+    "numpy",
+    "pandas",
+    "python-multipart",
 ]
-requires-python = ">=3.8"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

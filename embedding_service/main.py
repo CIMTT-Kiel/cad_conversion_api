@@ -6,6 +6,7 @@ Returns actual files instead of file paths.
 """
 
 import logging
+import os
 import tempfile
 import uuid
 from pathlib import Path
@@ -15,10 +16,11 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from embedding_service.services.vecset import VecSetEncoder
 
-# Setup basic logging
+# Simple logging setup from environment variables
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    format=os.getenv("LOG_FORMAT", "%(asctime)s | %(name)-20s | %(levelname)-8s | %(message)s"),
+    datefmt="%Y-%m-%d %H:%M:%S"
 )
 logger = logging.getLogger(__name__)
 

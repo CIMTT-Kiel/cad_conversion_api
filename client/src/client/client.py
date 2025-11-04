@@ -3,15 +3,23 @@ CAD Converter Client
 
 Simple client for interacting with CAD conversion services.
 Downloads actual files from the services.
+
+Configuration via:
+1. Config file (config.yaml)
+2. Environment variables
+3. Direct parameters
 """
 
-import logging
-import shutil
-import tempfile
+import json
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, Dict, Any
 
-import requests
+import requests, logging
+
+from client.config.config import ClientConfig
+
+
+# Setup client logging (call once at module level)
 
 logger = logging.getLogger(__name__)
 
@@ -23,30 +31,69 @@ class CADClientError(Exception):
 
 class CADConverterClient:
     """
-    Simple client for CAD conversion services.
-    
-    Example:
+    Client for CAD conversion, embedding, and analysis services.
+
+    Configuration methods (in priority order):
+    1. Direct parameters
+    2. Environment variables
+    3. Config file (config.yaml or config.local.yaml)
+    4. Defaults (localhost)
+
+    Examples:
+        # Method 1: Using config.yaml (einfachste Methode)
+        client = CADConverterClient()
+
+        # Method 2: Mit Host-IP
+        client = CADConverterClient(host="172.20.0.1")
+
+        # Method 3: Mit vollständigen URLs
         client = CADConverterClient(
-            converter_url="http://localhost:8001",
-            embedding_url="http://localhost:8002"
+            converter_url="http://172.20.0.1:8001",
+            embedding_url="http://172.20.0.1:8002",
+            analyser_url="http://172.20.0.1:8003"
         )
-        stl_file = client.convert_to_stl("model.step", "output.stl")
+
+        # Method 4: Mit eigener Config-Datei
+        client = CADConverterClient(config_file="my_config.yaml")
     """
 
-    def __init__(self, converter_url: str, embedding_url: Optional[str] = None, timeout: int = 300):
+    def __init__(
+        self,
+        host: Optional[str] = None,
+        converter_url: Optional[str] = None,
+        embedding_url: Optional[str] = None,
+        analyser_url: Optional[str] = None,
+        timeout: Optional[int] = None,
+        config_file: Optional[str] = None
+    ):
         """
-        Initialize client.
-        
+        Initialize client with configuration.
+
         Args:
-            converter_url: CAD service URL
-            embedding_url: VecSet service URL (optional)
+            host: Server IP or hostname (e.g., "172.20.0.1")
+            converter_url: Full converter service URL (overrides host)
+            embedding_url: Full embedding service URL (overrides host)
+            analyser_url: Full analyser service URL (overrides host)
             timeout: Request timeout in seconds
+            config_file: Path to custom config file
         """
-        self.converter_url = converter_url.rstrip("/")
-        self.embedding_url = embedding_url.rstrip("/") if embedding_url else None
-        self.timeout = timeout
-        
-        logger.info(f"CAD client initialized: {self.converter_url}")
+        # Load configuration
+        self.config = ClientConfig(
+            host=host,
+            converter_url=converter_url,
+            embedding_url=embedding_url,
+            analyser_url=analyser_url,
+            timeout=timeout,
+            config_file=config_file
+        )
+
+        # Set instance variables
+        self.converter_url = self.config.converter_url
+        self.embedding_url = self.config.embedding_url
+        self.analyser_url = self.config.analyser_url
+        self.timeout = self.config.timeout
+
+        logger.info("CAD client initialized successfully")
 
     def _upload_and_download(
         self,
@@ -207,42 +254,110 @@ class CADConverterClient:
         except Exception as e:
             raise CADClientError(f"VecSet conversion failed: {str(e)}") from e
 
-    def get_service_status(self) -> dict:
+    def analyse_cad(
+        self,
+        input_file: Union[str, Path]
+    ) -> Dict[str, Any]:
         """
-        Get status of connected services.
-        
+        Analyse CAD file and get geometry statistics.
+
+        Args:
+            input_file: Input STEP file (.step, .stp)
+
         Returns:
-            Service status information
+            Analysis results as dictionary with:
+            - analysis_id: Unique analysis ID
+            - filename: Input filename
+            - total_surfaces: Number of surfaces
+            - total_area: Total surface area
+            - surface_type_counts: Dict of surface types and counts
+            - surfaces: List of detailed surface information
+        """
+        if not self.analyser_url:
+            raise CADClientError("Analyser service URL not configured")
+
+        input_path = Path(input_file)
+
+        if not input_path.exists():
+            raise CADClientError(f"File not found: {input_path}")
+
+        if not input_path.suffix.lower() in [".step", ".stp"]:
+            raise CADClientError("Analyser only supports STEP files (.step, .stp)")
+
+        logger.info(f"Analysing: {input_path}")
+
+        try:
+            with open(input_path, "rb") as f:
+                response = requests.post(
+                    f"{self.analyser_url}/analyse",
+                    files={"file": (input_path.name, f)},
+                    timeout=self.timeout
+                )
+
+            response.raise_for_status()
+
+            result = response.json()
+            logger.info(f"Analysis completed: {result.get('total_surfaces', 0)} surfaces found")
+            return result
+
+        except requests.RequestException as e:
+            raise CADClientError(f"Analysis request failed: {str(e)}") from e
+        except json.JSONDecodeError as e:
+            raise CADClientError(f"Invalid JSON response: {str(e)}") from e
+        except Exception as e:
+            raise CADClientError(f"Analysis failed: {str(e)}") from e
+
+    def get_service_status(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Get status of all configured services.
+
+        Returns:
+            Service status information for each service
         """
         status = {}
-        
-        # Check CAD service
+
+        # Check Converter service
         try:
             response = requests.get(f"{self.converter_url}/health", timeout=10)
-            status["cad_service"] = {
+            status["converter_service"] = {
                 "status": "healthy" if response.status_code == 200 else "unhealthy",
                 "url": self.converter_url
             }
         except Exception as e:
-            status["cad_service"] = {
+            status["converter_service"] = {
                 "status": "unreachable",
                 "url": self.converter_url,
                 "error": str(e)
             }
-        
-        # Check VecSet service if configured
+
+        # Check Embedding service if configured
         if self.embedding_url:
             try:
                 response = requests.get(f"{self.embedding_url}/health", timeout=10)
-                status["vecset_service"] = {
+                status["embedding_service"] = {
                     "status": "healthy" if response.status_code == 200 else "unhealthy",
                     "url": self.embedding_url
                 }
             except Exception as e:
-                status["vecset_service"] = {
+                status["embedding_service"] = {
                     "status": "unreachable",
                     "url": self.embedding_url,
                     "error": str(e)
                 }
-        
+
+        # Check Analyser service if configured
+        if self.analyser_url:
+            try:
+                response = requests.get(f"{self.analyser_url}/health", timeout=10)
+                status["analyser_service"] = {
+                    "status": "healthy" if response.status_code == 200 else "unhealthy",
+                    "url": self.analyser_url
+                }
+            except Exception as e:
+                status["analyser_service"] = {
+                    "status": "unreachable",
+                    "url": self.analyser_url,
+                    "error": str(e)
+                }
+
         return status

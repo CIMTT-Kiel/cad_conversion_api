@@ -1,37 +1,50 @@
-FROM linuxserver/freecad:latest
+FROM python:3.11-slim-bookworm
 
-# Set image name 
-LABEL description="Analyser service with FreeCAD and python analysis tools"
+LABEL description="Lightweight CAD analyser service with FreeCAD headless"
 
-ENV DEBIAN_FRONTEND=noninteractive
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    DEBIAN_FRONTEND=noninteractive
 
-# Install python 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends python3-venv python3-pip build-essential git && \
-    rm -rf /var/lib/apt/lists/*
+# Create non-root user for security
+RUN groupadd --gid 1000 appuser && \
+    useradd --uid 1000 --gid appuser --shell /bin/bash --create-home appuser
 
-# Create a venv with system-site-packages to access FreeCAD modules
-RUN python3 -m venv /opt/freecad-venv --system-site-packages && \
-    /opt/freecad-venv/bin/pip install --upgrade pip setuptools wheel
+# Install system dependencies 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    freecad-python3 \
+    build-essential \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-# Find FreeCAD installation path and add it to the venv's site-packages
-RUN FREECAD_LIB=$(python3 -c "import sys; import os; \
-    paths = ['/usr/lib/freecad/lib', '/usr/lib/freecad-python3/lib', \
-             '/usr/local/lib/freecad/lib', '/opt/freecad/lib']; \
-    print(next((p for p in paths if os.path.exists(p)), '/usr/lib/freecad/lib'))") && \
-    SITE_PACKAGES=$(find /opt/freecad-venv/lib -type d -name "site-packages" | head -n 1) && \
-    echo "$FREECAD_LIB" > "$SITE_PACKAGES/freecad.pth"
+# Install uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
 
-# Alternative: Set PYTHONPATH in the wrapper script (more robust)
-RUN printf '%s\n' \
-    '#!/bin/bash' \
-    'export PYTHONPATH="/usr/lib/freecad/lib:/usr/lib/freecad-python3/lib:${PYTHONPATH}"' \
-    'source /opt/freecad-venv/bin/activate' \
-    'exec python3 "$@"' > /usr/local/bin/fc-python && \
-    chmod +x /usr/local/bin/fc-python
+# Set FreeCAD Python path
+ENV PYTHONPATH="/usr/lib/freecad-python3/lib:/usr/lib/freecad/lib:$PYTHONPATH"
 
-# Install additional python packages needed for analysis
-RUN /opt/freecad-venv/bin/pip install numpy pandas 
+# Set working directory
+WORKDIR /app
 
-WORKDIR /workspace
-VOLUME ["/workspace"]
+# Copy application code and change ownership
+COPY . .
+
+# Install dependencies using uv
+RUN uv sync
+RUN chown -R appuser:appuser /app
+
+# Create directories for temporary files
+RUN mkdir -p /tmp/cad_analyser && \
+    chown -R appuser:appuser /tmp/cad_analyser
+
+# Switch to non-root user
+USER appuser
+
+# Expose port
+EXPOSE 8002
+
+# Start application
+CMD ["/app/.venv/bin/uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]

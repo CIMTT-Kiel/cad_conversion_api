@@ -1,22 +1,26 @@
 services:
-  cad-service:
-    build: ./cad_service
-    container_name: cad-conversion-service
+  converter-service:
+    build: ./converter_service
+    container_name: cad-converter-service
     ports:
       - "8001:8001"
     volumes:
-      - cad_temp:/tmp
-    depends_on:
-      - vecset-service
+      - converter_temp:/tmp
+    environment:
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=%(asctime)s | %(name)-20s | %(levelname)-8s | %(message)s
     restart: unless-stopped
 
-  vecset-service:
-    build: ./vecset_service
-    container_name: vecset-conversion-service
+  embedding-service:
+    build: ./embedding_service
+    container_name: cad-embedding-service
     ports:
-      - "8002:8001"  # External port 8000 maps to internal 8001
+      - "8002:8001"
     volumes:
-      - vecset_temp:/tmp
+      - embedding_temp:/tmp
+    environment:
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=%(asctime)s | %(name)-20s | %(levelname)-8s | %(message)s
     deploy:
       resources:
         reservations:
@@ -26,6 +30,19 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
 
+  analyser-service:
+    build: ./analyser_service
+    container_name: cad-analyser-service
+    ports:
+      - "8003:8002"
+    volumes:
+      - analyser_temp:/tmp
+    environment:
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=%(asctime)s | %(name)-20s | %(levelname)-8s | %(message)s
+    restart: unless-stopped
+
 volumes:
-  cad_temp:
-  vecset_temp:
+  converter_temp:
+  embedding_temp:
+  analyser_temp:

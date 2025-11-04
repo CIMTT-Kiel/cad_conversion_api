@@ -17,6 +17,10 @@ from embedding_service.models import autoencoder
 
 logger = logging.getLogger(__name__)
 
+# configure logger
+logging.basicConfig(level=logging.INFO)
+
+
 
 class VecSetError(Exception):
     """Custom exception for VecSet conversion errors."""
@@ -45,7 +49,7 @@ class VecSetEncoder:
         if model_path:
             self.model_path = Path(model_path)
         else:            
-            self.model_path = "src/vecset_service/models/ckpts/checkpoint-110.pth"
+            self.model_path = "src/embedding_service/models/ckpts/checkpoint-110.pth"
 
             
         if not self.model_path:
