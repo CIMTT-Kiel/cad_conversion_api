@@ -27,26 +27,26 @@ class CADConverterClient:
     
     Example:
         client = CADConverterClient(
-            cad_url="http://localhost:8001",
-            vecset_url="http://localhost:8002"
+            converter_url="http://localhost:8001",
+            embedding_url="http://localhost:8002"
         )
         stl_file = client.convert_to_stl("model.step", "output.stl")
     """
 
-    def __init__(self, cad_url: str, vecset_url: Optional[str] = None, timeout: int = 300):
+    def __init__(self, converter_url: str, embedding_url: Optional[str] = None, timeout: int = 300):
         """
         Initialize client.
         
         Args:
-            cad_url: CAD service URL
-            vecset_url: VecSet service URL (optional)
+            converter_url: CAD service URL
+            embedding_url: VecSet service URL (optional)
             timeout: Request timeout in seconds
         """
-        self.cad_url = cad_url.rstrip("/")
-        self.vecset_url = vecset_url.rstrip("/") if vecset_url else None
+        self.converter_url = converter_url.rstrip("/")
+        self.embedding_url = embedding_url.rstrip("/") if embedding_url else None
         self.timeout = timeout
         
-        logger.info(f"CAD client initialized: {self.cad_url}")
+        logger.info(f"CAD client initialized: {self.converter_url}")
 
     def _upload_and_download(
         self,
@@ -131,7 +131,7 @@ class CADConverterClient:
         
         try:
             return self._upload_and_download(
-                f"{self.cad_url}/convert",
+                f"{self.converter_url}/convert",
                 input_path,
                 output_path,
                 {"target_format": "stl"}
@@ -164,7 +164,7 @@ class CADConverterClient:
         
         try:
             return self._upload_and_download(
-                f"{self.cad_url}/convert",
+                f"{self.converter_url}/convert",
                 input_path,
                 output_path,
                 {"target_format": "ply"}
@@ -179,7 +179,7 @@ class CADConverterClient:
         export_reconstruction: bool = False
     ) -> Path:
         """
-        Convert CAD file to VecSet format.
+        Convert CAD file to VecSet (Vecset as defined in 3dShapeToVecset Paper).
         
         Args:
             input_file: Input CAD file
@@ -199,7 +199,7 @@ class CADConverterClient:
         
         try:
             return self._upload_and_download(
-                f"{self.cad_url}/convert",
+                f"{self.converter_url}/convert",
                 input_path,
                 output_path,
                 {"target_format": "vecset"}
@@ -218,30 +218,30 @@ class CADConverterClient:
         
         # Check CAD service
         try:
-            response = requests.get(f"{self.cad_url}/health", timeout=10)
+            response = requests.get(f"{self.converter_url}/health", timeout=10)
             status["cad_service"] = {
                 "status": "healthy" if response.status_code == 200 else "unhealthy",
-                "url": self.cad_url
+                "url": self.converter_url
             }
         except Exception as e:
             status["cad_service"] = {
                 "status": "unreachable",
-                "url": self.cad_url,
+                "url": self.converter_url,
                 "error": str(e)
             }
         
         # Check VecSet service if configured
-        if self.vecset_url:
+        if self.embedding_url:
             try:
-                response = requests.get(f"{self.vecset_url}/health", timeout=10)
+                response = requests.get(f"{self.embedding_url}/health", timeout=10)
                 status["vecset_service"] = {
                     "status": "healthy" if response.status_code == 200 else "unhealthy",
-                    "url": self.vecset_url
+                    "url": self.embedding_url
                 }
             except Exception as e:
                 status["vecset_service"] = {
                     "status": "unreachable",
-                    "url": self.vecset_url,
+                    "url": self.embedding_url,
                     "error": str(e)
                 }
         

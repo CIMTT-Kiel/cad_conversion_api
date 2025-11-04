@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "converter_service"
+version = "0.1.0"
+description = "Lightweight CAD converter service"
+authors = [{name="Michel Kruse"}]
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "open3d",
+    "cascadio",
+    "requests",
+    "trimesh>=4.8.2",
+    "python-multipart>=0.0.20",
+]
+
+
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]

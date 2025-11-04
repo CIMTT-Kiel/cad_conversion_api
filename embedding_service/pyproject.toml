@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "embedding_service"
+version = "0.1.0"
+description = "Service to infer models to generate embeddings from CAD Data"
+authors = [{name="Michel Kruse"}]
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "torch",
+    "requests",
+    "trimesh>=4.8.2",
+    "mcubes",
+    "numpy",
+    "einops>=0.8.1",
+    "python-multipart"
+]
+
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
