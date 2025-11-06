@@ -17,6 +17,9 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from converter_service.services.cad_conversion import CADConverter
 
+EMBEDDING_URL = "http://embedding-service:8000"
+
+
 # Simple logging setup from environment variables
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -26,9 +29,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="CAD Converter Service")
-
-# VecSet service URL
-VECSET_SERVICE_URL = "http://localhost:8002"
 
 
 @app.exception_handler(Exception)
@@ -125,7 +125,7 @@ async def convert_cad_file(
             logger.debug(f"Sending PLY to VecSet service")
             with open(ply_file, "rb") as f:
                 vecset_response = requests.post(
-                    VECSET_SERVICE_URL+"/vecset",
+                    EMBEDDING_URL+"/vecset",
                     files={"file": (ply_file.name, f)},
                     timeout=300,
                     stream=True  # Stream the response
@@ -163,4 +163,4 @@ async def convert_cad_file(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

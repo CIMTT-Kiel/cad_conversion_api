@@ -43,7 +43,7 @@ USER appuser
 
 
 # Expose port
-EXPOSE 8001
+EXPOSE 8000
 
 # Start application
-CMD ["/app/.venv/bin/uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["/app/.venv/bin/uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

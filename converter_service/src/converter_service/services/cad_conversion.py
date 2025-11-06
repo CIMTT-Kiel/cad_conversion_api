@@ -74,14 +74,14 @@ class CADConverter:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         
-        logger.info(f"Converting {self.input_file} to STL")
+        logger.info(f"Converting tmp-File to STL")
         
         try:
             # Handle STEP files via cascadio
             if self.input_file.suffix.lower() in {".step", ".stp"}:
                 # Convert STEP to OBJ first
                 temp_obj = self.temp_dir / f"{self.file_name}_temp.obj"
-                logger.debug(f"Converting STEP to OBJ: {temp_obj}")
+                logger.debug(f"Converting STEP to OBJ")
                 cascadio.step_to_obj(str(self.input_file), str(temp_obj))
                 mesh = trimesh.load(str(temp_obj), file_type="obj")
             else:
@@ -118,7 +118,7 @@ class CADConverter:
         if point_count is None:
             point_count = self.DEFAULT_POINT_COUNT
         
-        logger.info(f"Converting {self.input_file} to PLY with {point_count} points")
+        logger.info(f"Converting to PLY with {point_count} points")
         
         try:
             # First convert to STL if needed

@@ -12,8 +12,8 @@ host: "172.20.0.1"  # Server-IP oder Hostname
 # Standard-Ports (werden mit host kombiniert)
 ports:
   converter: 8001
-  embedding: 8002
-  analyser: 8003
+  embedding: 8003
+  analyser: 8002
 
 # Option 2: Individuelle URLs (überschreibt host + ports)
 # Nur aktivieren wenn Services auf verschiedenen Servern laufen
@@ -27,5 +27,5 @@ timeout: 300
 
 # Logging-Konfiguration
 logging:
-  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  level: "DEBUG"  # DEBUG, INFO, WARNING, ERROR
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

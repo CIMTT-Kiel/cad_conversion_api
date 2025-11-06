@@ -70,7 +70,7 @@ class CADConverterClient:
         Initialize client with configuration.
 
         Args:
-            host: Server IP or hostname (e.g., "172.20.0.1")
+            host: Server IP or hostname 
             converter_url: Full converter service URL (overrides host)
             embedding_url: Full embedding service URL (overrides host)
             analyser_url: Full analyser service URL (overrides host)

@@ -44,7 +44,7 @@ RUN mkdir -p /tmp/cad_analyser && \
 USER appuser
 
 # Expose port
-EXPOSE 8002
+EXPOSE 8000
 
 # Start application
-CMD ["/app/.venv/bin/uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]
+CMD ["/app/.venv/bin/uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

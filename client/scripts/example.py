@@ -68,8 +68,8 @@ def main():
         # More control: specify each service URL
         client = CADConverterClient(
             converter_url="http://172.20.0.1:8001",
-            embedding_url="http://172.20.0.1:8002",
-            analyser_url="http://172.20.0.1:8003"
+            embedding_url="http://172.20.0.1:8003",
+            analyser_url="http://172.20.0.1:8002"
         )
         print("Client initialized with custom URLs")
         print()
@@ -87,7 +87,7 @@ def main():
     client = CADConverterClient(host="172.20.0.1")
 
     # Check if we have a sample STEP file
-    sample_file = Path("/home/michelkruse/data_repos/fabricad-interim-states-1k/00000991/geometry_00000991.STEP")
+    sample_file = Path("/home/clearshape/data-repos/fabwave/1_raw/fabwave/Boxes/00d49861-3894-4531-8fc4-246a1c4852e1.stp")
 
     if sample_file.exists():
         print(f"Using sample file: {sample_file}")
