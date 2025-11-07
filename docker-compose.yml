@@ -42,10 +42,25 @@ services:
       - LOG_FORMAT=%(asctime)s | %(name)-20s | %(levelname)-8s | %(message)s
     restart: unless-stopped
 
+  rendering-service:
+    build: ./rendering_service
+    container_name: cad-rendering-service
+    ports:
+      - "8004:8000"
+    volumes:
+      - rendering_temp:/tmp
+    environment:
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=%(asctime)s | %(name)-20s | %(levelname)-8s | %(message)s
+      - DISPLAY=:99
+    restart: unless-stopped
+    shm_size: '2gb'  # Increase shared memory for rendering
+
 volumes:
   converter_temp:
   embedding_temp:
   analyser_temp:
+  rendering_temp:
 
 networks:
   default:

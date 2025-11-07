@@ -18,6 +18,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from converter_service.services.cad_conversion import CADConverter
 
 EMBEDDING_URL = "http://embedding-service:8000"
+RENDERING_URL = "http://rendering-service:8000"
 
 
 # Simple logging setup from environment variables
@@ -158,6 +159,96 @@ async def convert_cad_file(
         raise HTTPException(
             status_code=500,
             detail=f"Conversion failed: {str(e)}"
+        )
+
+
+@app.post("/multiview")
+async def generate_multiview(
+    file: UploadFile = File(...),
+    resolution: int = Form(448),
+    background: str = Form("White"),
+    art_styles: str = Form("5")
+):
+    """
+    Generate multiple orthographic views from a CAD file.
+
+    This endpoint forwards the request to the rendering service.
+
+    Args:
+        file: Uploaded CAD file (STEP, IGES, BREP, STL)
+        resolution: Image resolution in pixels (default: 448)
+        background: Background color - 'White', 'Black', 'Transparent', 'Current'
+        art_styles: Comma-separated list of FreeCAD draw styles (default: "5")
+                   5 = Flat Lines, 2 = Wireframe
+
+    Returns:
+        FileResponse: ZIP file containing all generated views
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    multiview_id = str(uuid.uuid4())
+    logger.info(f"Starting multiview generation {multiview_id}: {file.filename}")
+
+    try:
+        # Read file content
+        content = await file.read()
+
+        # Forward to rendering service
+        logger.debug(f"Sending file to rendering service")
+
+        # Prepare form data
+        files = {"file": (file.filename, content, file.content_type)}
+        data = {
+            "resolution": str(resolution),
+            "background": background,
+            "art_styles": art_styles
+        }
+
+        rendering_response = requests.post(
+            RENDERING_URL + "/multiview",
+            files=files,
+            data=data,
+            timeout=600,  # 10 minutes timeout for rendering
+            stream=True
+        )
+
+        if rendering_response.status_code != 200:
+            logger.error(f"Rendering service failed: {rendering_response.status_code}")
+            raise HTTPException(
+                status_code=502,
+                detail=f"Rendering service failed: {rendering_response.text}"
+            )
+
+        # Save the response (ZIP file) to temp location
+        temp_dir = Path(tempfile.mkdtemp(prefix=f"multiview_{multiview_id}_"))
+        zip_file = temp_dir / f"{Path(file.filename).stem}_multiviews.zip"
+
+        with open(zip_file, "wb") as f:
+            for chunk in rendering_response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+
+        logger.info(f"Multiview generation {multiview_id} completed")
+
+        return FileResponse(
+            path=str(zip_file),
+            filename=f"{Path(file.filename).stem}_multiviews.zip",
+            media_type="application/zip",
+            background=None  # Don't delete file automatically
+        )
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Multiview generation {multiview_id} failed: {str(e)}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Rendering service communication failed: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Multiview generation {multiview_id} failed: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Multiview generation failed: {str(e)}"
         )
 
 

@@ -26,6 +26,7 @@ class ClientConfig:
         converter_url: Optional[str] = None,
         embedding_url: Optional[str] = None,
         analyser_url: Optional[str] = None,
+        rendering_url: Optional[str] = None,
         timeout: Optional[int] = None,
         config_file: Optional[str] = None
     ):
@@ -43,6 +44,7 @@ class ClientConfig:
             converter_url: Full converter service URL
             embedding_url: Full embedding service URL
             analyser_url: Full analyser service URL
+            rendering_url: Full rendering service URL
             timeout: Request timeout in seconds
             config_file: Path to config file (yaml)
         """
@@ -61,6 +63,7 @@ class ClientConfig:
         converter_port = ports.get("converter", 8001)
         embedding_port = ports.get("embedding", 8002)
         analyser_port = ports.get("analyser", 8003)
+        rendering_port = ports.get("rendering", 8004)
 
         # Get URLs from config
         urls = config_data.get("urls", {})
@@ -93,16 +96,27 @@ class ClientConfig:
         else:
             self.analyser_url = self._build_url(self.host, analyser_port)
 
+        if rendering_url:
+            self.rendering_url = rendering_url
+        elif self._env_rendering_url:
+            self.rendering_url = self._env_rendering_url
+        elif urls.get("rendering"):
+            self.rendering_url = urls["rendering"]
+        else:
+            self.rendering_url = self._build_url(self.host, rendering_port)
+
         # Clean up URLs
         self.converter_url = self.converter_url.rstrip("/") if self.converter_url else None
         self.embedding_url = self.embedding_url.rstrip("/") if self.embedding_url else None
         self.analyser_url = self.analyser_url.rstrip("/") if self.analyser_url else None
+        self.rendering_url = self.rendering_url.rstrip("/") if self.rendering_url else None
 
         logger.info("Configuration loaded:")
         logger.info(f"  Host: {self.host}")
         logger.info(f"  Converter: {self.converter_url}")
         logger.info(f"  Embedding: {self.embedding_url}")
         logger.info(f"  Analyser: {self.analyser_url}")
+        logger.info(f"  Rendering: {self.rendering_url}")
         logger.info(f"  Timeout: {self.timeout}s")
 
     def _load_env_variables(self):
@@ -111,6 +125,7 @@ class ClientConfig:
         self._env_converter_url = os.getenv("CAD_CONVERTER_URL")
         self._env_embedding_url = os.getenv("CAD_EMBEDDING_URL")
         self._env_analyser_url = os.getenv("CAD_ANALYSER_URL")
+        self._env_rendering_url = os.getenv("CAD_RENDERING_URL")
 
         timeout_str = os.getenv("CAD_API_TIMEOUT")
         self._env_timeout = int(timeout_str) if timeout_str else None
@@ -190,5 +205,6 @@ class ClientConfig:
             "converter_url": self.converter_url,
             "embedding_url": self.embedding_url,
             "analyser_url": self.analyser_url,
+            "rendering_url": self.rendering_url,
             "timeout": self.timeout
         }

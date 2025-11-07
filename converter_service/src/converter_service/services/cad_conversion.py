@@ -5,8 +5,10 @@ Handles conversion between different CAD formats with basic error handling.
 """
 
 import logging
+import math
 from pathlib import Path
-from typing import Union
+from typing import Union, List, Optional
+import zipfile
 
 import cascadio
 import open3d as o3d
