@@ -14,6 +14,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libgl1 \
     libglib2.0-0 \
+    libgomp1 \
+    libglu1-mesa \
+    libxcursor1 \
+    libxinerama1 \
+    libxft2 \
+    libxrender1 \
+    libxrandr2 \
+    libxi6 \
     curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*

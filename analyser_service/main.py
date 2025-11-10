@@ -15,7 +15,8 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
 from src.analyser_service.cad_stats import (load_step_file,
-                                            get_detailed_surface_info)
+                                            get_detailed_surface_info,
+                                            get_comprehensive_analysis)
 
 # Simple logging setup from environment variables
 # logging.basicConfig(
@@ -49,13 +50,13 @@ async def analyse_cad_file(
     file: UploadFile = File(...)
 ):
     """
-    Analyse CAD file and return detailed surface information.
+    Analyse CAD file and return comprehensive geometry information as JSON file.
 
     Args:
         file: Uploaded CAD file (STEP format)
 
     Returns:
-        JSONResponse: Analysis results including surface types, areas, and statistics
+        FileResponse: JSON file containing comprehensive analysis results
     """
     # Basic validation
     if not file.filename:
@@ -84,26 +85,32 @@ async def analyse_cad_file(
 
         # Load and analyse STEP file
         doc = load_step_file(str(input_file))
-        surface_details = get_detailed_surface_info(doc)
 
-        # Calculate statistics
-        from collections import Counter
-        surface_types = [s['surface_type'] for s in surface_details]
-        type_counts = dict(Counter(surface_types))
+        # Get comprehensive analysis
+        analysis_result = get_comprehensive_analysis(doc)
 
-        total_area = sum(s['area'] for s in surface_details)
-
-        result = {
-            "analysis_id": analysis_id,
-            "filename": file.filename,
-            "total_surfaces": len(surface_details),
-            "total_area": total_area,
-            "surface_type_counts": type_counts,
-            "surfaces": surface_details
+        # Add metadata
+        analysis_result['metadata'] = {
+            'analysis_id': analysis_id,
+            'filename': file.filename,
+            'timestamp': str(Path(input_file).stat().st_mtime)
         }
 
+        # Save analysis to JSON file
+        import json
+        json_output_file = temp_dir / f"{Path(file.filename).stem}_analysis.json"
+        with open(json_output_file, 'w') as f:
+            json.dump(analysis_result, f, indent=2)
+
         logger.info(f"Analysis {analysis_id} completed successfully")
-        return JSONResponse(content=result)
+
+        # Return JSON file
+        return FileResponse(
+            path=str(json_output_file),
+            filename=f"{Path(file.filename).stem}_analysis.json",
+            media_type="application/json",
+            background=None
+        )
 
     except Exception as e:
         logger.error(f"Analysis {analysis_id} failed: {str(e)}", exc_info=True)
@@ -111,11 +118,6 @@ async def analyse_cad_file(
             status_code=500,
             detail=f"Analysis failed: {str(e)}"
         )
-    finally:
-        # Cleanup temp files
-        import shutil
-        if temp_dir.exists():
-            shutil.rmtree(temp_dir)
 
 
 

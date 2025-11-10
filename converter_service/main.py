@@ -17,6 +17,23 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from converter_service.services.cad_conversion import CADConverter
 
+# Try to import gmsh for 3D meshing
+try:
+    import gmsh
+    GMSH_AVAILABLE = True
+except ImportError:
+    GMSH_AVAILABLE = False
+
+# Try to import libraries for invariants calculation
+try:
+    import meshio
+    import numpy as np
+    import quadpy
+    from sklearn.decomposition import PCA
+    INVARIANTS_AVAILABLE = True
+except ImportError:
+    INVARIANTS_AVAILABLE = False
+
 EMBEDDING_URL = "http://embedding-service:8000"
 RENDERING_URL = "http://rendering-service:8000"
 
@@ -288,6 +305,241 @@ async def generate_multiview(
         raise HTTPException(
             status_code=500,
             detail=f"Multiview generation failed: {str(e)}"
+        )
+
+
+@app.post("/mesh")
+async def generate_3d_mesh(
+    file: UploadFile = File(...),
+    mesh_size: float = Form(None)
+):
+    """
+    Generate a 3D mesh from a STEP file using Gmsh.
+
+    Args:
+        file: Uploaded STEP file
+        mesh_size: Optional mesh size parameter for controlling mesh density
+
+    Returns:
+        FileResponse: The generated .msh file
+    """
+    if not GMSH_AVAILABLE:
+        raise HTTPException(
+            status_code=501,
+            detail="Gmsh is not available. Please install gmsh to use this feature."
+        )
+
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    # Check file extension
+    file_ext = Path(file.filename).suffix.lower()
+    if file_ext not in [".step", ".stp"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Only STEP files (.step, .stp) are supported for meshing"
+        )
+
+    mesh_id = str(uuid.uuid4())
+    logger.info(f"Starting mesh generation {mesh_id}: {file.filename}")
+
+    # Create temporary directory
+    temp_dir = Path(tempfile.mkdtemp(prefix=f"mesh_{mesh_id}_"))
+    step_file_path = temp_dir / file.filename
+    msh_file_path = temp_dir / f"{Path(file.filename).stem}.msh"
+
+    try:
+        # Save uploaded file
+        with open(step_file_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+
+        # Initialize Gmsh
+        gmsh.initialize(interruptible=False)
+        gmsh.option.setNumber("General.Terminal", 1)
+
+        try:
+            gmsh.model.add("3DMesh")
+            gmsh.model.occ.importShapes(str(step_file_path))
+            gmsh.model.occ.synchronize()
+
+            # Enable face sewing for better mesh quality
+            gmsh.option.setNumber("Geometry.OCCSewFaces", 1)
+            gmsh.model.occ.synchronize()
+
+            # Set mesh size if provided
+            if mesh_size is not None and mesh_size > 0:
+                gmsh.option.setNumber("Mesh.CharacteristicLengthMin", mesh_size)
+                gmsh.option.setNumber("Mesh.CharacteristicLengthMax", mesh_size)
+
+            # Generate 3D mesh
+            gmsh.model.mesh.generate(3)
+
+            # Verify that a 3D mesh was generated
+            elem_types, _, _ = gmsh.model.mesh.getElements(dim=3)
+            if not elem_types:
+                raise ValueError("No 3D mesh generated. Only 2D mesh may have been created.")
+
+            # Write mesh file
+            gmsh.write(str(msh_file_path))
+
+            logger.info(f"Mesh generation {mesh_id} completed: {msh_file_path}")
+
+        finally:
+            gmsh.finalize()
+
+        # Return the mesh file
+        base_name = Path(file.filename).stem
+        return FileResponse(
+            path=str(msh_file_path),
+            filename=f"{base_name}.msh",
+            media_type="application/octet-stream",
+            background=None
+        )
+
+    except ValueError as e:
+        logger.error(f"Mesh generation {mesh_id} failed: {str(e)}")
+        raise HTTPException(
+            status_code=422,
+            detail=f"Mesh generation failed: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Mesh generation {mesh_id} failed: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Mesh generation failed: {str(e)}"
+        )
+
+
+@app.post("/invariants")
+async def calculate_invariants(
+    file: UploadFile = File(...),
+    normalized: bool = Form(False)
+):
+    """
+    Calculate geometric invariants from a 3D mesh file.
+
+    Args:
+        file: Uploaded mesh file (.msh format from Gmsh)
+        normalized: If True, scale mesh to unit cube (default: False)
+
+    Returns:
+        JSON with moments (mues) and invariants (pis)
+    """
+    if not INVARIANTS_AVAILABLE:
+        raise HTTPException(
+            status_code=501,
+            detail="Invariants calculation not available. Required libraries: meshio, quadpy, scikit-learn"
+        )
+
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    invariants_id = str(uuid.uuid4())
+    logger.info(f"Starting invariants calculation {invariants_id}: {file.filename}")
+
+    # Create temporary directory
+    temp_dir = Path(tempfile.mkdtemp(prefix=f"invariants_{invariants_id}_"))
+    mesh_file_path = temp_dir / file.filename
+
+    try:
+        # Save uploaded file
+        with open(mesh_file_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+
+        # Define moment permutations (up to order 4)
+        moment_permutations = [
+            (0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1),
+            (2, 0, 0), (0, 2, 0), (0, 0, 2), (1, 1, 0), (1, 0, 1), (0, 1, 1),
+            (3, 0, 0), (0, 3, 0), (0, 0, 3), (2, 1, 0), (2, 0, 1), (1, 2, 0),
+            (0, 2, 1), (1, 0, 2), (0, 1, 2), (1, 1, 1),
+            (4, 0, 0), (0, 4, 0), (0, 0, 4), (3, 1, 0), (3, 0, 1), (1, 3, 0),
+            (0, 3, 1), (1, 0, 3), (0, 1, 3), (2, 2, 0), (2, 0, 2), (0, 2, 2),
+            (2, 1, 1), (1, 2, 1), (1, 1, 2)
+        ]
+
+        eps = 1e-10
+
+        # Read mesh file
+        inmsh = meshio.read(str(mesh_file_path))
+
+        # Check if mesh has tetrahedrons
+        if 'tetra' not in inmsh.cells_dict:
+            raise ValueError("Mesh file must contain tetrahedral elements (3D mesh required)")
+
+        tetras_idxs = inmsh.cells_dict['tetra']
+
+        # Apply PCA transformation
+        pca = PCA(n_components=3)
+        pca.fit(inmsh.points)
+        inmsh.points = pca.transform(inmsh.points)
+
+        # Optional normalization
+        if normalized:
+            max_expension = (np.max(inmsh.points[:, 0]) - np.min(inmsh.points[:, 0]))
+            if max_expension > 0:
+                inmsh.points = inmsh.points / max_expension
+
+        # Prepare tetrahedrons for integration
+        tetras = inmsh.points[tetras_idxs]
+        tetras_s = np.stack(tetras, axis=-2)
+
+        # Initialize quadpy integration scheme (order 4)
+        scheme = quadpy.t3.get_good_scheme(4)
+
+        # Calculate moments (mues)
+        mues = {}
+        for mp in moment_permutations:
+            moment_key = f'mue_{mp[0]}{mp[1]}{mp[2]}'
+            # Define lambda for current moment permutation
+            l = lambda x, p=mp: x[0]**p[0] * x[1]**p[1] * x[2]**p[2]
+            # Integrate over all tetrahedrons
+            mues[moment_key] = float(scheme.integrate(l, tetras_s).sum())
+
+        # Calculate invariants (pis)
+        pis = {}
+        mue_200 = mues['mue_200'] if mues['mue_200'] > 0 else eps
+        mue_020 = mues['mue_020'] if mues['mue_020'] > 0 else eps
+        mue_002 = mues['mue_002'] if mues['mue_002'] > 0 else eps
+
+        for mp in moment_permutations:
+            p, q, r = int(mp[0]), int(mp[1]), int(mp[2])
+            mue_key = f'mue_{p}{q}{r}'
+            pi_key = f'pi_{p}{q}{r}'
+
+            mue_var = mues[mue_key]
+            denominator = (mue_200 ** ((4*p - q - r + 2) / 10) *
+                          mue_020 ** ((4*q - p - r + 2) / 10) *
+                          mue_002 ** ((4*r - q - p + 2) / 10))
+
+            pis[pi_key] = float(mue_var / denominator) if denominator != 0 else 0.0
+
+        # Combine results
+        result = {
+            "filename": file.filename,
+            "normalized": normalized,
+            "total_moments": len(mues),
+            "total_invariants": len(pis),
+            "moments": mues,
+            "invariants": pis
+        }
+
+        logger.info(f"Invariants calculation {invariants_id} completed: {len(mues)} moments, {len(pis)} invariants")
+
+        return JSONResponse(content=result)
+
+    except ValueError as e:
+        logger.error(f"Invariants calculation {invariants_id} failed: {str(e)}")
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invariants calculation failed: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Invariants calculation {invariants_id} failed: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Invariants calculation failed: {str(e)}"
         )
 
 

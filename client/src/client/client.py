@@ -260,22 +260,28 @@ class CADConverterClient:
 
     def analyse_cad(
         self,
-        input_file: Union[str, Path]
+        input_file: Union[str, Path],
+        output_file: Optional[Union[str, Path]] = None
     ) -> Dict[str, Any]:
         """
-        Analyse CAD file and get geometry statistics.
+        Analyse CAD file and get comprehensive geometry statistics.
 
         Args:
             input_file: Input STEP file (.step, .stp)
+            output_file: Optional output JSON file path. If not provided,
+                        will save to same directory as input with _analysis.json suffix
 
         Returns:
-            Analysis results as dictionary with:
-            - analysis_id: Unique analysis ID
-            - filename: Input filename
-            - total_surfaces: Number of surfaces
-            - total_area: Total surface area
-            - surface_type_counts: Dict of surface types and counts
-            - surfaces: List of detailed surface information
+            Analysis results as dictionary containing:
+            - metadata: Analysis metadata (id, filename, timestamp)
+            - summary: Overall statistics (volume, area, faces, edges, vertices, etc.)
+            - bounding_box: Min/max coordinates
+            - dimensions: Length, width, height, diagonal
+            - center_of_mass: X, Y, Z coordinates
+            - surface_type_counts: Dictionary of surface types and their counts
+            - edge_statistics: Min/max/average edge lengths
+            - validity: Validation checks
+            - objects: List of per-object detailed analysis
         """
         if not self.analyser_url:
             raise CADClientError("Analyser service URL not configured")
@@ -285,8 +291,14 @@ class CADConverterClient:
         if not input_path.exists():
             raise CADClientError(f"File not found: {input_path}")
 
-        if not input_path.suffix.lower() in [".step", ".stp"]:
+        if input_path.suffix.lower() not in [".step", ".stp"]:
             raise CADClientError("Analyser only supports STEP files (.step, .stp)")
+
+        # Determine output file path
+        if output_file is None:
+            output_path = input_path.parent / f"{input_path.stem}_analysis.json"
+        else:
+            output_path = Path(output_file)
 
         logger.info(f"Analysing: {input_path}")
 
@@ -295,19 +307,33 @@ class CADConverterClient:
                 response = requests.post(
                     f"{self.analyser_url}/analyse",
                     files={"file": (input_path.name, f)},
-                    timeout=self.timeout
+                    timeout=self.timeout,
+                    stream=True
                 )
 
             response.raise_for_status()
 
-            result = response.json()
-            logger.info(f"Analysis completed: {result.get('total_surfaces', 0)} surfaces found")
+            # Save the JSON file
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(output_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+
+            # Load and return the JSON content
+            with open(output_path, "r") as f:
+                result = json.load(f)
+
+            logger.info(f"Analysis completed and saved to: {output_path}")
+            logger.info(f"Total volume: {result.get('summary', {}).get('total_volume', 0)}")
+            logger.info(f"Total surfaces: {result.get('summary', {}).get('total_faces', 0)}")
+
             return result
 
         except requests.RequestException as e:
             raise CADClientError(f"Analysis request failed: {str(e)}") from e
         except json.JSONDecodeError as e:
-            raise CADClientError(f"Invalid JSON response: {str(e)}") from e
+            raise CADClientError(f"Invalid JSON in analysis file: {str(e)}") from e
         except Exception as e:
             raise CADClientError(f"Analysis failed: {str(e)}") from e
 
@@ -425,6 +451,128 @@ class CADConverterClient:
             raise CADClientError(f"Invalid JSON response: {str(e)}") from e
         except Exception as e:
             raise CADClientError(f"Multiview generation failed: {str(e)}") from e
+
+    def to_3d_mesh(
+        self,
+        input_file: Union[str, Path],
+        output_file: Optional[Union[str, Path]] = None,
+        mesh_size: Optional[float] = None
+    ) -> Path:
+        """
+        Generate a 3D mesh from a STEP file using Gmsh.
+
+        Args:
+            input_file: Input STEP file
+            output_file: Output .msh file (optional)
+            mesh_size: Optional mesh size parameter for controlling mesh density
+
+        Returns:
+            Path to .msh file
+
+        Example:
+            # Generate mesh with default settings
+            client.to_3d_mesh("model.step", "output.msh")
+
+            # Generate mesh with custom mesh size
+            client.to_3d_mesh("model.step", "output.msh", mesh_size=0.5)
+        """
+        input_path = Path(input_file)
+        output_path = Path(output_file) if output_file else Path(f"./{input_path.stem}.msh")
+
+        if output_path.suffix.lower() != ".msh":
+            raise CADClientError("Output file must have .msh extension")
+
+        logger.info(f"Generating 3D mesh: {input_path} -> {output_path}")
+
+        params = {}
+        if mesh_size is not None:
+            params["mesh_size"] = str(mesh_size)
+
+        try:
+            return self._upload_and_download(
+                f"{self.converter_url}/mesh",
+                input_path,
+                output_path,
+                params
+            )
+        except Exception as e:
+            raise CADClientError(f"3D mesh generation failed: {str(e)}") from e
+
+    def to_invariants(
+        self,
+        input_file: Union[str, Path],
+        output_file: Optional[Union[str, Path]] = None,
+        normalized: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Calculate geometric invariants from a 3D mesh file.
+
+        Args:
+            input_file: Input mesh file (.msh format)
+            output_file: Optional JSON file to save results
+            normalized: If True, scale mesh to unit cube (default: False)
+
+        Returns:
+            Dictionary with moments and invariants:
+            - filename: Input filename
+            - normalized: Whether mesh was normalized
+            - total_moments: Number of moments calculated
+            - total_invariants: Number of invariants calculated
+            - moments: Dictionary of moment values (mue_pqr)
+            - invariants: Dictionary of invariant values (pi_pqr)
+
+        Example:
+            # Calculate invariants from mesh file
+            result = client.to_invariants("model.msh")
+
+            # Save to JSON file
+            result = client.to_invariants("model.msh", "invariants.json", normalized=True)
+        """
+        input_path = Path(input_file)
+
+        if not input_path.exists():
+            raise CADClientError(f"File not found: {input_path}")
+
+        if input_path.suffix.lower() != ".msh":
+            raise CADClientError("Input file must have .msh extension (use to_3d_mesh() first)")
+
+        logger.info(f"Calculating invariants: {input_path}")
+
+        try:
+            # Upload mesh file and get invariants
+            with open(input_path, "rb") as f:
+                response = requests.post(
+                    f"{self.converter_url}/invariants",
+                    files={"file": (input_path.name, f)},
+                    data={"normalized": str(normalized).lower()},
+                    timeout=self.timeout
+                )
+
+            response.raise_for_status()
+            result = response.json()
+
+            # Save to file if requested
+            if output_file:
+                output_path = Path(output_file)
+                if output_path.suffix.lower() != ".json":
+                    output_path = output_path.with_suffix(".json")
+
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+
+                with open(output_path, "w") as f:
+                    json.dump(result, f, indent=2)
+
+                logger.info(f"Invariants saved to: {output_path}")
+
+            logger.info(f"Calculated {result.get('total_moments', 0)} moments and {result.get('total_invariants', 0)} invariants")
+            return result
+
+        except requests.RequestException as e:
+            raise CADClientError(f"Invariants calculation request failed: {str(e)}") from e
+        except json.JSONDecodeError as e:
+            raise CADClientError(f"Invalid JSON response: {str(e)}") from e
+        except Exception as e:
+            raise CADClientError(f"Invariants calculation failed: {str(e)}") from e
 
     def get_service_status(self) -> Dict[str, Dict[str, Any]]:
         """

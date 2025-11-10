@@ -189,29 +189,118 @@ def test_vecset_conversion(client, results):
     return run_test(convert_vecset, results, "STEP to Vecset Conversion")
 
 
+def test_3d_mesh_generation(client, results):
+    """Test 3D mesh generation."""
+    print_header("5. 3D MESH GENERATION")
+
+    def generate_mesh():
+        output_file = OUTPUT_DIR / "test_output.msh"
+        result = client.to_3d_mesh(SAMPLE_FILE, output_file)
+
+        if not output_file.exists():
+            raise Exception(f"Output file not created: {output_file}")
+
+        file_size = output_file.stat().st_size
+        print(f"\n      File created: {output_file.name} ({file_size} bytes)")
+        return result
+
+    return run_test(generate_mesh, results, "STEP to 3D Mesh Conversion")
+
+
+def test_invariants_calculation(client, results):
+    """Test geometric invariants calculation."""
+    print_header("6. GEOMETRIC INVARIANTS")
+
+    def calculate_invariants():
+        # First ensure we have a mesh file
+        mesh_file = OUTPUT_DIR / "test_output.msh"
+        if not mesh_file.exists():
+            # Generate mesh if it doesn't exist
+            client.to_3d_mesh(SAMPLE_FILE, mesh_file)
+
+        # Calculate invariants
+        output_file = OUTPUT_DIR / "test_invariants.json"
+        result = client.to_invariants(mesh_file, output_file, normalized=True)
+
+        if not output_file.exists():
+            raise Exception(f"Output file not created: {output_file}")
+
+        # Verify result structure
+        if 'moments' not in result or 'invariants' not in result:
+            raise Exception("Result missing moments or invariants")
+
+        if result['total_moments'] == 0 or result['total_invariants'] == 0:
+            raise Exception("No moments or invariants calculated")
+
+        file_size = output_file.stat().st_size
+        print(f"\n      File created: {output_file.name} ({file_size} bytes)")
+        print(f"      Moments calculated: {result['total_moments']}")
+        print(f"      Invariants calculated: {result['total_invariants']}")
+        print(f"      Normalized: {result['normalized']}")
+
+        return result
+
+    return run_test(calculate_invariants, results, "Geometric Invariants Calculation")
+
+
 def test_cad_analysis(client, results):
-    """Test CAD analysis."""
-    print_header("5. CAD ANALYSIS")
+    """Test comprehensive CAD analysis."""
+    print_header("7. CAD ANALYSIS")
 
     def analyse():
-        analysis = client.analyse_cad(SAMPLE_FILE)
+        output_file = OUTPUT_DIR / "analysis_result.json"
+        analysis = client.analyse_cad(SAMPLE_FILE, output_file)
 
-        print("\n      Analysis Results:")
-        print(f"        Total surfaces: {analysis.get('total_surfaces', 'N/A')}")
-        print(f"        Total area: {analysis.get('total_area', 0):.2f}")
-        print(f"        Surface types: {analysis.get('surface_type_counts', {})}")
+        # Verify JSON file was created
+        if not output_file.exists():
+            raise Exception(f"Analysis JSON file not created: {output_file}")
 
-        if 'total_surfaces' not in analysis:
-            raise Exception("Analysis result missing 'total_surfaces'")
+        file_size = output_file.stat().st_size
+        print(f"\n      Analysis JSON created: {output_file.name} ({file_size} bytes)")
+
+        # Print comprehensive analysis results
+        print("\n      Analysis Summary:")
+        summary = analysis.get('summary', {})
+        print(f"        Total Volume: {summary.get('total_volume', 0):.2f}")
+        print(f"        Total Surface Area: {summary.get('total_surface_area', 0):.2f}")
+        print(f"        Total Faces: {summary.get('total_faces', 0)}")
+        print(f"        Total Edges: {summary.get('total_edges', 0)}")
+        print(f"        Total Vertices: {summary.get('total_vertices', 0)}")
+        print(f"        Total Solids: {summary.get('total_solids', 0)}")
+
+        # Print dimensions
+        dims = analysis.get('dimensions', {})
+        print(f"\n      Dimensions:")
+        print(f"        Length: {dims.get('length', 0):.2f}")
+        print(f"        Width: {dims.get('width', 0):.2f}")
+        print(f"        Height: {dims.get('height', 0):.2f}")
+
+        # Print surface types
+        surface_types = analysis.get('surface_type_counts', {})
+        print(f"\n      Surface Types: {surface_types}")
+
+        # Print validity
+        validity = analysis.get('validity', {})
+        print(f"\n      Validity:")
+        print(f"        Is Valid: {validity.get('is_valid', False)}")
+        print(f"        Is Closed: {validity.get('is_closed', False)}")
+
+        # Verify essential fields exist
+        if 'summary' not in analysis:
+            raise Exception("Analysis result missing 'summary'")
+        if 'bounding_box' not in analysis:
+            raise Exception("Analysis result missing 'bounding_box'")
+        if 'dimensions' not in analysis:
+            raise Exception("Analysis result missing 'dimensions'")
 
         return analysis
 
-    return run_test(analyse, results, "CAD Geometry Analysis")
+    return run_test(analyse, results, "Comprehensive CAD Geometry Analysis")
 
 
 def test_multiview(client, results):
     """Test multiview generation."""
-    print_header("6. MULTIVIEW GENERATION")
+    print_header("8. MULTIVIEW GENERATION")
 
     # Test 6a: Shaded with edges
     def multiview_shaded_edges():
@@ -320,10 +409,16 @@ def main():
         test_ply_conversion(client, results)
         test_vecset_conversion(client, results)
 
-        # 3. Analysis tests
+        # 3. 3D Mesh generation
+        test_3d_mesh_generation(client, results)
+
+        # 4. Geometric Invariants
+        test_invariants_calculation(client, results)
+
+        # 5. Analysis tests
         test_cad_analysis(client, results)
 
-        # 4. Multiview generation tests
+        # 6. Multiview generation tests
         test_multiview(client, results)
 
     except KeyboardInterrupt:
