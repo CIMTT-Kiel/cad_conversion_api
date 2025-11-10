@@ -20,6 +20,8 @@ data/
 *.ply
 *.npy
 *.png
+*.msh
+*.json
 *.zip
 
 
