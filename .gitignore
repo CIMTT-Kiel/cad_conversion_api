@@ -19,6 +19,11 @@ data/
 *.stl
 *.ply
 *.npy
+*.png
+*.zip
+
+
 # Rendered images from tests
 client/scripts/rendered_images/
 client/scripts/example_rendered_images/
+
