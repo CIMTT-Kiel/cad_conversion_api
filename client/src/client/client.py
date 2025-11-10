@@ -311,38 +311,39 @@ class CADConverterClient:
         except Exception as e:
             raise CADClientError(f"Analysis failed: {str(e)}") from e
 
-    def render_multiview(
+    def to_multiview(
         self,
         input_file: Union[str, Path],
-        part_number: str,
+        output_dir: Union[str, Path],
         render_mode: str = "shaded_with_edges",
-        total_imgs: int = 3,
-        output_dir: Optional[Union[str, Path]] = None
+        total_imgs: int = 20,
+        part_number: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Render multiple views from a CAD file using the rendering service.
+        Generate multiple views from a CAD file and save them to a directory.
 
         Args:
             input_file: Input CAD file (STEP format)
-            part_number: Part number or identifier for output organization
-            render_mode: Rendering mode (default: "shaded_with_edges")
-            total_imgs: Number of views to generate (default: 3)
-            output_dir: Local directory to save rendered images (optional)
+            output_dir: Directory to save rendered images
+            render_mode: Rendering mode - "shaded_with_edges", "shaded", or "wireframe" (default: "shaded_with_edges")
+            total_imgs: Number of views to generate (default: 20)
+            part_number: Part number or identifier (optional, defaults to filename)
 
         Returns:
             Dictionary with rendering results:
             - success: Boolean indicating success
-            - images: List of paths to saved images (if output_dir specified)
+            - images: List of paths to saved images
             - total_images: Number of images generated
+            - output_dir: Directory where images were saved
 
         Example:
-            result = client.render_multiview(
+            result = client.to_multiview(
                 "model.step",
-                "part_001",
-                total_imgs=5,
-                output_dir="./output"
+                "./output/renders",
+                render_mode="shaded_with_edges",
+                total_imgs=20
             )
-            print(f"Generated {result['total_images']} views")
+            print(f"Generated {result['total_images']} views in {result['output_dir']}")
         """
         if not self.rendering_url:
             raise CADClientError("Rendering service URL not configured")
@@ -355,7 +356,11 @@ class CADConverterClient:
         if not input_path.suffix.lower() in [".step", ".stp"]:
             raise CADClientError("Rendering service only supports STEP files (.step, .stp)")
 
-        logger.info(f"Rendering multiview: {input_path} (part: {part_number}, views: {total_imgs})")
+        # Use filename as part_number if not provided
+        if part_number is None:
+            part_number = input_path.stem
+
+        logger.info(f"Generating multiview: {input_path} (mode: {render_mode}, views: {total_imgs})")
 
         try:
             with open(input_path, "rb") as f:
@@ -374,94 +379,50 @@ class CADConverterClient:
 
             result = response.json()
 
-            # Save images locally if output_dir is specified
+            # Save images and perspective data to output directory
+            import base64
+            output_path = Path(output_dir)
+            output_path.mkdir(parents=True, exist_ok=True)
+
             saved_images = []
-            if output_dir:
-                import base64
-                output_path = Path(output_dir)
-                output_path.mkdir(parents=True, exist_ok=True)
+            perspectives = result.get("perspectives", [])
 
-                for img_data in result.get("images", []):
-                    filename = img_data.get("filename")
-                    img_base64 = img_data.get("data")
+            # Save all images
+            for img_data in result.get("images", []):
+                filename = img_data.get("filename")
+                img_base64 = img_data.get("data")
 
-                    if filename and img_base64:
-                        img_path = output_path / filename
-                        img_bytes = base64.b64decode(img_base64)
-                        with open(img_path, "wb") as f:
-                            f.write(img_bytes)
-                        saved_images.append(str(img_path))
-                        logger.info(f"Saved image: {img_path}")
+                if filename and img_base64:
+                    # Save image
+                    img_path = output_path / filename
+                    img_bytes = base64.b64decode(img_base64)
+                    with open(img_path, "wb") as f:
+                        f.write(img_bytes)
+                    saved_images.append(str(img_path))
+                    logger.info(f"Saved image: {img_path}")
 
-                result["images"] = saved_images
-                result["output_dir"] = str(output_path)
+            # Save all camera/perspective data in a single JSON file
+            if perspectives:
+                camera_data_path = output_path / "camera_data.json"
+                with open(camera_data_path, "w") as f:
+                    json.dump({
+                        "total_images": len(perspectives),
+                        "render_mode": render_mode,
+                        "part_number": part_number,
+                        "perspectives": perspectives
+                    }, f, indent=2)
+                logger.info(f"Saved camera data: {camera_data_path}")
 
-            logger.info(f"Rendering completed: {result.get('total_images', 0)} images generated")
+            result["images"] = saved_images
+            result["output_dir"] = str(output_path)
+
+            logger.info(f"Multiview generation completed: {result.get('total_images', 0)} images saved to {output_path}")
             return result
 
         except requests.RequestException as e:
-            raise CADClientError(f"Rendering request failed: {str(e)}") from e
+            raise CADClientError(f"Multiview generation request failed: {str(e)}") from e
         except json.JSONDecodeError as e:
             raise CADClientError(f"Invalid JSON response: {str(e)}") from e
-        except Exception as e:
-            raise CADClientError(f"Rendering failed: {str(e)}") from e
-
-    def generate_multiview(
-        self,
-        input_file: Union[str, Path],
-        output_file: Optional[Union[str, Path]] = None,
-        resolution: int = 448,
-        background: str = "White",
-        art_styles: str = "5"
-    ) -> Path:
-        """
-        Generate multiple orthographic views from a CAD file.
-
-        Creates 20 views from different camera angles and returns them as a ZIP file.
-
-        Args:
-            input_file: Input CAD file (STEP, IGES, BREP, STL)
-            output_file: Output ZIP file (optional)
-            resolution: Image resolution in pixels (default: 448)
-            background: Background color - 'White', 'Black', 'Transparent', 'Current' (default: 'White')
-            art_styles: Comma-separated FreeCAD draw styles (default: "5")
-                       0 = As Is, 1 = Points, 2 = Wireframe, 3 = Hidden Line,
-                       4 = No Shading, 5 = Flat Lines
-
-        Returns:
-            Path to ZIP file containing all generated views
-
-        Example:
-            # Generate multiview with default settings (Flat Lines)
-            client.generate_multiview("model.step", "output.zip")
-
-            # Generate with multiple art styles
-            client.generate_multiview("model.step", "output.zip", art_styles="5,2")
-
-            # Generate with transparent background and wireframe
-            client.generate_multiview("model.step", "output.zip",
-                                     background="Transparent", art_styles="2")
-        """
-        input_path = Path(input_file)
-        output_path = Path(output_file) if output_file else Path(f"./{input_path.stem}_multiviews.zip")
-
-        if output_path.suffix.lower() != ".zip":
-            raise CADClientError("Output file must have .zip extension")
-
-        logger.info(f"Generating multiview: {input_path} -> {output_path}")
-        logger.debug(f"Parameters: resolution={resolution}, background={background}, art_styles={art_styles}")
-
-        try:
-            return self._upload_and_download(
-                f"{self.converter_url}/multiview",
-                input_path,
-                output_path,
-                {
-                    "resolution": str(resolution),
-                    "background": background,
-                    "art_styles": art_styles
-                }
-            )
         except Exception as e:
             raise CADClientError(f"Multiview generation failed: {str(e)}") from e
 

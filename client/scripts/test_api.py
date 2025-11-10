@@ -209,85 +209,22 @@ def test_cad_analysis(client, results):
     return run_test(analyse, results, "CAD Geometry Analysis")
 
 
-def test_multiview_generation(client, results):
+def test_multiview(client, results):
     """Test multiview generation."""
-    print_header("6. MULTIVIEW GENERATION (ORTHOGRAPHIC)")
+    print_header("6. MULTIVIEW GENERATION")
 
-    # Test 6a: Default multiview (Flat Lines)
-    def gen_multiview_default():
-        output_file = OUTPUT_DIR / "multiview_default.zip"
-        result = client.generate_multiview(SAMPLE_FILE, output_file)
-
-        if not output_file.exists():
-            raise Exception(f"Output file not created: {output_file}")
-
-        file_size = output_file.stat().st_size
-        print(f"\n      File created: {output_file.name} ({file_size} bytes)")
-        print(f"      Contains 20 orthographic views (Flat Lines style)")
-        return result
-
-    run_test(gen_multiview_default, results, "Default Multiview (Flat Lines)")
-
-    # Test 6b: Wireframe
-    def gen_multiview_wireframe():
-        output_file = OUTPUT_DIR / "multiview_wireframe.zip"
-        result = client.generate_multiview(
+    # Test 6a: Shaded with edges
+    def multiview_shaded_edges():
+        output_dir = OUTPUT_DIR / "multiview" / "shaded_edges"
+        result = client.to_multiview(
             SAMPLE_FILE,
-            output_file,
-            resolution=448,
-            background="White",
-            art_styles="2"  # Wireframe
-        )
-
-        if not output_file.exists():
-            raise Exception(f"Output file not created: {output_file}")
-
-        file_size = output_file.stat().st_size
-        print(f"\n      File created: {output_file.name} ({file_size} bytes)")
-        print(f"      Contains 20 orthographic views (Wireframe style)")
-        return result
-
-    run_test(gen_multiview_wireframe, results, "Wireframe Multiview")
-
-    # Test 6c: Multi-style
-    def gen_multiview_multi():
-        output_file = OUTPUT_DIR / "multiview_multi.zip"
-        result = client.generate_multiview(
-            SAMPLE_FILE,
-            output_file,
-            resolution=448,
-            background="White",
-            art_styles="5,2"  # Flat Lines + Wireframe
-        )
-
-        if not output_file.exists():
-            raise Exception(f"Output file not created: {output_file}")
-
-        file_size = output_file.stat().st_size
-        print(f"\n      File created: {output_file.name} ({file_size} bytes)")
-        print(f"      Contains 40 views (20 per style: Flat Lines + Wireframe)")
-        return result
-
-    run_test(gen_multiview_multi, results, "Multi-Style Multiview")
-
-
-def test_rendering_service(client, results):
-    """Test rendering service."""
-    print_header("7. RENDERING SERVICE (3D)")
-
-    # Test 7a: Shaded with edges
-    def render_shaded_edges():
-        output_dir = OUTPUT_DIR / "renders" / "shaded_edges"
-        result = client.render_multiview(
-            SAMPLE_FILE,
-            part_number="test_shaded_edges",
+            output_dir,
             render_mode="shaded_with_edges",
-            total_imgs=5,
-            output_dir=output_dir
+            total_imgs=5
         )
 
         if not result.get('success'):
-            raise Exception("Rendering failed")
+            raise Exception("Multiview generation failed")
 
         img_count = result.get('total_images', 0)
         print(f"\n      Images generated: {img_count}")
@@ -295,21 +232,20 @@ def test_rendering_service(client, results):
         print(f"      Output: {output_dir}")
         return result
 
-    run_test(render_shaded_edges, results, "Shaded with Edges Rendering (5 views)")
+    run_test(multiview_shaded_edges, results, "Shaded with Edges (5 views)")
 
-    # Test 7b: Shaded only
-    def render_shaded():
-        output_dir = OUTPUT_DIR / "renders" / "shaded"
-        result = client.render_multiview(
+    # Test 6b: Shaded only
+    def multiview_shaded():
+        output_dir = OUTPUT_DIR / "multiview" / "shaded"
+        result = client.to_multiview(
             SAMPLE_FILE,
-            part_number="test_shaded",
+            output_dir,
             render_mode="shaded",
-            total_imgs=5,
-            output_dir=output_dir
+            total_imgs=5
         )
 
         if not result.get('success'):
-            raise Exception("Rendering failed")
+            raise Exception("Multiview generation failed")
 
         img_count = result.get('total_images', 0)
         print(f"\n      Images generated: {img_count}")
@@ -317,21 +253,20 @@ def test_rendering_service(client, results):
         print(f"      Output: {output_dir}")
         return result
 
-    run_test(render_shaded, results, "Shaded Rendering (5 views)")
+    run_test(multiview_shaded, results, "Shaded (5 views)")
 
-    # Test 7c: Wireframe
-    def render_wireframe():
-        output_dir = OUTPUT_DIR / "renders" / "wireframe"
-        result = client.render_multiview(
+    # Test 6c: Wireframe
+    def multiview_wireframe():
+        output_dir = OUTPUT_DIR / "multiview" / "wireframe"
+        result = client.to_multiview(
             SAMPLE_FILE,
-            part_number="test_wireframe",
+            output_dir,
             render_mode="wireframe",
-            total_imgs=5,
-            output_dir=output_dir
+            total_imgs=5
         )
 
         if not result.get('success'):
-            raise Exception("Rendering failed")
+            raise Exception("Multiview generation failed")
 
         img_count = result.get('total_images', 0)
         print(f"\n      Images generated: {img_count}")
@@ -339,29 +274,7 @@ def test_rendering_service(client, results):
         print(f"      Output: {output_dir}")
         return result
 
-    run_test(render_wireframe, results, "Wireframe Rendering (5 views)")
-
-    # Test 7d: High volume test
-    def render_many():
-        output_dir = OUTPUT_DIR / "renders" / "many_views"
-        result = client.render_multiview(
-            SAMPLE_FILE,
-            part_number="test_many",
-            render_mode="shaded_with_edges",
-            total_imgs=20,
-            output_dir=output_dir
-        )
-
-        if not result.get('success'):
-            raise Exception("Rendering failed")
-
-        img_count = result.get('total_images', 0)
-        print(f"\n      Images generated: {img_count}")
-        print(f"      Mode: shaded_with_edges")
-        print(f"      Output: {output_dir}")
-        return result
-
-    run_test(render_many, results, "High Volume Rendering (20 views)")
+    run_test(multiview_wireframe, results, "Wireframe (5 views)")
 
 
 def main():
@@ -411,10 +324,7 @@ def main():
         test_cad_analysis(client, results)
 
         # 4. Multiview generation tests
-        test_multiview_generation(client, results)
-
-        # 5. Rendering service tests
-        test_rendering_service(client, results)
+        test_multiview(client, results)
 
     except KeyboardInterrupt:
         print("\n\nTest interrupted by user")
