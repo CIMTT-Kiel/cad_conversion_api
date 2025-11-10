@@ -1,7 +1,6 @@
-#!/usr/bin/env python3
 """
-Comprehensive API Test Suite
-Tests all CAD Conversion API functionalities in a structured manner.
+API Testing Script
+Tests all CAD Conversion API functionalities 
 """
 
 from pathlib import Path
