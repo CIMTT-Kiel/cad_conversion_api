@@ -353,6 +353,9 @@ def draw_edges_on_image(image, edge_lines, camera_pose, width, height,
     """Zeichnet 3D-Kanten auf 2D-Bild durch Projektion."""
     from scipy import ndimage
 
+    # Create a writable copy of the image
+    image = np.array(image, copy=True)
+
     # Erstelle View- und Projection-Matrix
     view_matrix = np.linalg.inv(camera_pose)
     fov = np.pi / 4.0
@@ -451,9 +454,9 @@ def step_to_images(step_file, part_number, output_dir="./renders",
     Returns:
         dict: {'success': bool, 'output_dir': str, 'images': list, 'perspectives': list}
     """
-    # os.makedirs(output_dir, exist_ok=True)
-    # part_output_dir = os.path.join(output_dir, part_number)
-    # os.makedirs(part_output_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
+    part_output_dir = os.path.join(output_dir, part_number)
+    os.makedirs(part_output_dir, exist_ok=True)
 
     stl_path = os.path.join(tempfile.gettempdir(), f"{part_number}.stl")
 
@@ -487,11 +490,11 @@ def step_to_images(step_file, part_number, output_dir="./renders",
                                        transparency, total_imgs)
 
         # Speichere Perspektiven-Daten als JSON
-        # import json
-        # perspectives_file = os.path.join(part_output_dir, f"{part_number}_perspectives.json")
-        # with open(perspectives_file, 'w') as f:
-        #     json.dump(render_result['perspectives'], f, indent=2)
-        # print(f"💾 Perspektiven gespeichert: {perspectives_file}")
+        import json
+        perspectives_file = os.path.join(part_output_dir, f"{part_number}_perspectives.json")
+        with open(perspectives_file, 'w') as f:
+            json.dump(render_result['perspectives'], f, indent=2)
+        print(f"💾 Perspektiven gespeichert: {perspectives_file}")
 
         print(f"\n{'='*60}")
         print(f"✅ Erfolgreich abgeschlossen!")
@@ -502,6 +505,7 @@ def step_to_images(step_file, part_number, output_dir="./renders",
 
         return {
             'success': True,
+            'output_dir': part_output_dir,
             'images': render_result['images'],
             'perspectives': render_result['perspectives']
         }

@@ -32,29 +32,39 @@ async def render_step_file(
     render_mode: str = Form("shaded_with_edges"),
     total_imgs: int = Form(3),
 ):
+    tmp_path = None
+    output_dir = None
+
     try:
+        # Save uploaded file to temporary location
         with tempfile.NamedTemporaryFile(delete=False, suffix=".step") as tmp:
             contents = await file.read()
             tmp.write(contents)
             tmp_path = tmp.name
 
+        # Create temporary output directory
+        output_dir = tempfile.mkdtemp()
+
+        # Call rendering function with correct parameters
         result = step_to_images(
-            step_file=test_step_file,
-            part_number="part_001",
-            output_dir="./renders",
+            step_file=tmp_path,
+            part_number=part_number,
+            output_dir=output_dir,
             resolution=(1280, 720),
             stl_deflection=0.1,
             cleanup_stl=True,
-            render_mode='shaded_with_edges',  # 'shaded', 'wireframe', 'shaded_with_edges'
+            render_mode=render_mode,
             edge_color=(0.1, 0.1, 0.1),
             edge_width=2.0,
-            transparency=1.0,  # 0.0 = durchsichtig, 1.0 = opak
-            total_imgs=22  # Anzahl der Perspektiven
+            transparency=1.0,
+            total_imgs=total_imgs
         )
 
         # Read images and encode as base64
         images_data = []
-        for img_path in result.get("images", []):
+        for img_filename in result.get("images", []):
+            # Construct full path to image
+            img_path = os.path.join(output_dir, part_number, img_filename)
             if os.path.exists(img_path):
                 with open(img_path, "rb") as img_file:
                     img_base64 = base64.b64encode(img_file.read()).decode('utf-8')
@@ -65,12 +75,17 @@ async def render_step_file(
                 # Clean up the image file
                 os.remove(img_path)
 
-        #get perspektive data
+        # Get perspective data
         perspectives = result.get("perspectives", [])
 
+        # Clean up output directories
+        part_output_dir = os.path.join(output_dir, part_number)
+        if os.path.exists(part_output_dir):
+            try:
+                os.rmdir(part_output_dir)
+            except:
+                pass
 
-        # Clean up output directory if empty
-        output_dir = result.get("output_dir")
         if output_dir and os.path.exists(output_dir):
             try:
                 os.rmdir(output_dir)
@@ -81,6 +96,7 @@ async def render_step_file(
         return JSONResponse(content={
             "success": result.get("success", False),
             "images": images_data,
+            "perspectives": perspectives,
             "total_images": len(images_data)
         })
 
@@ -88,5 +104,6 @@ async def render_step_file(
         return JSONResponse(status_code=500, content={"error": str(e)})
 
     finally:
-        if os.path.exists(tmp_path):
+        # Clean up temporary STEP file
+        if tmp_path and os.path.exists(tmp_path):
             os.remove(tmp_path)

@@ -172,70 +172,109 @@ async def generate_multiview(
     """
     Generate multiple orthographic views from a CAD file.
 
-    This endpoint forwards the request to the rendering service.
+    This endpoint uses the rendering service to generate 20 views for each art style.
 
     Args:
         file: Uploaded CAD file (STEP, IGES, BREP, STL)
         resolution: Image resolution in pixels (default: 448)
-        background: Background color - 'White', 'Black', 'Transparent', 'Current'
-        art_styles: Comma-separated list of FreeCAD draw styles (default: "5")
-                   5 = Flat Lines, 2 = Wireframe
+        background: Background color - 'White', 'Black', 'Transparent' (default: "White")
+        art_styles: Comma-separated list of rendering modes (default: "5")
+                   5 = Flat Lines (shaded_with_edges)
+                   2 = Wireframe (wireframe)
+                   6 = Shaded (shaded)
 
     Returns:
-        FileResponse: ZIP file containing all generated views
+        FileResponse: ZIP file containing all generated views (20 views per style)
     """
+    import zipfile
+    import base64
+    import io
+
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided")
 
     multiview_id = str(uuid.uuid4())
     logger.info(f"Starting multiview generation {multiview_id}: {file.filename}")
 
+    # Map art styles to render modes
+    style_to_mode = {
+        "2": "wireframe",      # Wireframe
+        "5": "shaded_with_edges",  # Flat Lines
+        "6": "shaded"          # Shaded
+    }
+
     try:
-        # Read file content
+        # Parse art styles
+        styles = [s.strip() for s in art_styles.split(",")]
+        render_modes = []
+        for style in styles:
+            mode = style_to_mode.get(style, "shaded_with_edges")
+            render_modes.append((style, mode))
+
+        logger.info(f"Rendering {len(render_modes)} style(s): {[m[1] for m in render_modes]}")
+
+        # Read file content once
         content = await file.read()
 
-        # Forward to rendering service
-        logger.debug(f"Sending file to rendering service")
-
-        # Prepare form data
-        files = {"file": (file.filename, content, file.content_type)}
-        data = {
-            "resolution": str(resolution),
-            "background": background,
-            "art_styles": art_styles
-        }
-
-        rendering_response = requests.post(
-            RENDERING_URL + "/multiview",
-            files=files,
-            data=data,
-            timeout=600,  # 10 minutes timeout for rendering
-            stream=True
-        )
-
-        if rendering_response.status_code != 200:
-            logger.error(f"Rendering service failed: {rendering_response.status_code}")
-            raise HTTPException(
-                status_code=502,
-                detail=f"Rendering service failed: {rendering_response.text}"
-            )
-
-        # Save the response (ZIP file) to temp location
+        # Create temp directory for ZIP
         temp_dir = Path(tempfile.mkdtemp(prefix=f"multiview_{multiview_id}_"))
-        zip_file = temp_dir / f"{Path(file.filename).stem}_multiviews.zip"
+        zip_path = temp_dir / f"{Path(file.filename).stem}_multiviews.zip"
 
-        with open(zip_file, "wb") as f:
-            for chunk in rendering_response.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
+        total_images = 0
 
-        logger.info(f"Multiview generation {multiview_id} completed")
+        # Create ZIP file
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            # Generate 20 views for each render mode
+            for style_id, render_mode in render_modes:
+                logger.info(f"Generating 20 views with render_mode: {render_mode}")
+
+                # Prepare request to rendering service
+                files = {"file": (file.filename, io.BytesIO(content), file.content_type)}
+                data = {
+                    "part_number": f"multiview_{style_id}",
+                    "render_mode": render_mode,
+                    "total_imgs": "20"
+                }
+
+                rendering_response = requests.post(
+                    RENDERING_URL + "/render",
+                    files=files,
+                    data=data,
+                    timeout=600
+                )
+
+                if rendering_response.status_code != 200:
+                    logger.error(f"Rendering service failed: {rendering_response.status_code}")
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Rendering service failed: {rendering_response.text}"
+                    )
+
+                # Parse response
+                result = rendering_response.json()
+                images = result.get("images", [])
+
+                logger.info(f"Received {len(images)} images for style {style_id}")
+
+                # Add images to ZIP
+                for img_data in images:
+                    filename = img_data.get("filename", f"image_{total_images}.png")
+                    # Add style prefix to filename
+                    filename = f"style_{style_id}_{filename}"
+                    img_base64 = img_data.get("data", "")
+
+                    # Decode base64 and add to ZIP
+                    img_bytes = base64.b64decode(img_base64)
+                    zipf.writestr(filename, img_bytes)
+                    total_images += 1
+
+        logger.info(f"Multiview generation {multiview_id} completed: {total_images} images")
 
         return FileResponse(
-            path=str(zip_file),
+            path=str(zip_path),
             filename=f"{Path(file.filename).stem}_multiviews.zip",
             media_type="application/zip",
-            background=None  # Don't delete file automatically
+            background=None
         )
 
     except requests.exceptions.RequestException as e:
