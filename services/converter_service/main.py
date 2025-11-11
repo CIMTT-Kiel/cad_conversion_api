@@ -308,6 +308,69 @@ async def generate_multiview(
         )
 
 
+@app.post("/to_voxel")
+async def convert_to_voxel(
+    file: UploadFile = File(...),
+    resolution: int = Form(128)
+):
+    """
+    Convert CAD file to voxel representation.
+
+    Args:
+        file: Uploaded CAD file (STEP, JT, OBJ, STL)
+        resolution: Voxel grid resolution (default: 128)
+
+    Returns:
+        FileResponse: Sparse voxel file (.npz format)
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    if resolution < 16 or resolution > 512:
+        raise HTTPException(
+            status_code=400,
+            detail="Resolution must be between 16 and 512"
+        )
+
+    voxel_id = str(uuid.uuid4())
+    logger.info(f"Starting voxel conversion {voxel_id}: {file.filename} (resolution: {resolution})")
+
+    # Create temporary directory
+    temp_dir = Path(tempfile.mkdtemp(prefix=f"voxel_{voxel_id}_"))
+    input_file = temp_dir / file.filename
+
+    try:
+        # Save uploaded file
+        with open(input_file, "wb") as f:
+            content = await file.read()
+            f.write(content)
+
+        # Initialize converter
+        converter = CADConverter(input_file)
+
+        # Generate output filename
+        base_name = Path(file.filename).stem
+        output_file = temp_dir / f"{voxel_id}.npz"
+
+        # Convert to voxel
+        converter.to_voxel(output_file, resolution=resolution)
+
+        logger.info(f"Voxel conversion {voxel_id} completed")
+        return FileResponse(
+            path=str(output_file),
+            filename=f"{base_name}_voxel_{resolution}.npz",
+            media_type="application/octet-stream",
+            background=None
+        )
+
+    except Exception as e:
+        logger.error(f"Voxel conversion {voxel_id} failed: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Voxel conversion failed: {str(e)}"
+        )
+
+
 @app.post("/mesh")
 async def generate_3d_mesh(
     file: UploadFile = File(...),

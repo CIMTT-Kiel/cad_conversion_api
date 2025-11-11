@@ -6,6 +6,10 @@ Handles conversion between different CAD formats with basic error handling.
 
 import logging
 import math
+import os
+import sys
+import glob
+import shutil
 from pathlib import Path
 from typing import Union, List, Optional
 import zipfile
@@ -13,6 +17,10 @@ import zipfile
 import cascadio
 import open3d as o3d
 import trimesh
+import numpy as np
+from PIL import Image
+import stltovoxel
+from scipy import sparse
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +160,126 @@ class CADConverter:
         except Exception as e:
             logger.error(f"PLY conversion failed: {str(e)}")
             raise CADConversionError(f"PLY conversion failed: {str(e)}") from e
+
+    def to_voxel(self, output_path: Union[str, Path], resolution: int = 128) -> Path:
+        """
+        Convert CAD file to voxel representation stored as sparse format.
+
+        Args:
+            output_path: Where to save the voxel file (.npz format)
+            resolution: Voxel grid resolution (default: 128)
+
+        Returns:
+            Path to created voxel file (.npz)
+        """
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"Converting to voxels with resolution {resolution}")
+
+        try:
+            # First convert to STL if needed
+            temp_stl = self.temp_dir / f"{self.file_name}_temp.stl"
+            if not temp_stl.exists():
+                self.to_stl(temp_stl)
+
+            # Create temp directory for slices
+            slices_dir = self.temp_dir / "slices_temp"
+            slices_dir.mkdir(exist_ok=True)
+
+            # Convert STL to voxel slices using stltovoxel
+            temp_slice_pattern = slices_dir / "slice.png"
+
+            try:
+                # Suppress stdout during conversion
+                old_stdout = sys.stdout
+                sys.stdout = open(os.devnull, 'w')
+                stltovoxel.convert_file(str(temp_stl), str(temp_slice_pattern), resolution)
+                sys.stdout.close()
+                sys.stdout = old_stdout
+            except Exception as e:
+                sys.stdout = old_stdout
+                raise CADConversionError(f"Voxel slice generation failed: {str(e)}")
+
+            # Load all slice images
+            slice_files = sorted(glob.glob(str(slices_dir / "*.png")))
+
+            if not slice_files:
+                raise CADConversionError("No voxel slices were generated")
+
+            logger.info(f"Generated {len(slice_files)} voxel slices")
+
+            # Convert slices to 3D voxel array
+            voxel_slices = []
+            for slice_file in slice_files:
+                image = Image.open(slice_file)
+                # Expand to square and resize
+                image = self._expand_to_square(image, 0)
+                image = image.resize((resolution, resolution), Image.Resampling.NEAREST)
+                voxel_slices.append(np.array(image, dtype=np.uint8))
+
+            # Stack slices into 3D array
+            voxel_array = np.array(voxel_slices, dtype=np.uint8)
+
+            # Convert to binary (non-zero = occupied voxel)
+            voxel_binary = (voxel_array > 0).astype(np.uint8)
+
+            # Convert to sparse format to save space
+            # Store as COO (coordinate) format with indices of occupied voxels
+            occupied_indices = np.argwhere(voxel_binary)
+
+            # Save as compressed numpy file with metadata
+            np.savez_compressed(
+                output_path,
+                indices=occupied_indices,
+                shape=voxel_binary.shape,
+                resolution=resolution,
+                format_version="1.0"
+            )
+
+            # Cleanup temp slices
+            shutil.rmtree(slices_dir, ignore_errors=True)
+
+            if not output_path.exists():
+                raise CADConversionError("Voxel file was not created")
+
+            occupancy = len(occupied_indices) / np.prod(voxel_binary.shape) * 100
+            logger.info(
+                f"Voxel conversion completed: {output_path} "
+                f"(shape: {voxel_binary.shape}, occupancy: {occupancy:.2f}%)"
+            )
+            return output_path
+
+        except Exception as e:
+            logger.error(f"Voxel conversion failed: {str(e)}")
+            # Cleanup on error
+            if 'slices_dir' in locals():
+                shutil.rmtree(slices_dir, ignore_errors=True)
+            raise CADConversionError(f"Voxel conversion failed: {str(e)}") from e
+
+    @staticmethod
+    def _expand_to_square(pil_img: Image.Image, background_color) -> Image.Image:
+        """
+        Expand image to square by adding padding.
+
+        Args:
+            pil_img: Input PIL Image
+            background_color: Color for padding
+
+        Returns:
+            Square PIL Image
+        """
+        width, height = pil_img.size
+        if width == height:
+            return pil_img
+        elif width > height:
+            result = Image.new(pil_img.mode, (width, width), background_color)
+            result.paste(pil_img, (0, (width - height) // 2))
+            return result
+        else:
+            result = Image.new(pil_img.mode, (height, height), background_color)
+            result.paste(pil_img, ((height - width) // 2, 0))
+            return result
 
     def get_info(self) -> dict:
         """Get basic information about the input file."""

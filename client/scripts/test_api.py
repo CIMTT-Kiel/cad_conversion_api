@@ -189,9 +189,40 @@ def test_vecset_conversion(client, results):
     return run_test(convert_vecset, results, "STEP to Vecset Conversion")
 
 
+def test_voxel_conversion(client, results):
+    """Test Voxel conversion."""
+    print_header("5. VOXEL CONVERSION")
+
+    def convert_voxel():
+        import numpy as np
+
+        output_file = OUTPUT_DIR / "test_voxel.npz"
+        result = client.to_voxel(SAMPLE_FILE, output_file, resolution=64)
+
+        if not output_file.exists():
+            raise Exception(f"Output file not created: {output_file}")
+
+        # Load and verify voxel data
+        data = np.load(output_file)
+        shape = tuple(data['shape'])
+        resolution = int(data['resolution'])
+        occupied_voxels = len(data['indices'])
+        occupancy = occupied_voxels / np.prod(shape) * 100
+
+        file_size = output_file.stat().st_size
+        print(f"\n      File created: {output_file.name} ({file_size} bytes)")
+        print(f"      Voxel grid shape: {shape}")
+        print(f"      Resolution: {resolution}")
+        print(f"      Occupied voxels: {occupied_voxels}")
+        print(f"      Occupancy: {occupancy:.2f}%")
+        return result
+
+    return run_test(convert_voxel, results, "STEP to Voxel Conversion")
+
+
 def test_3d_mesh_generation(client, results):
     """Test 3D mesh generation."""
-    print_header("5. 3D MESH GENERATION")
+    print_header("6. 3D MESH GENERATION")
 
     def generate_mesh():
         output_file = OUTPUT_DIR / "test_output.msh"
@@ -209,7 +240,7 @@ def test_3d_mesh_generation(client, results):
 
 def test_invariants_calculation(client, results):
     """Test geometric invariants calculation."""
-    print_header("6. GEOMETRIC INVARIANTS")
+    print_header("7. GEOMETRIC INVARIANTS")
 
     def calculate_invariants():
         # First ensure we have a mesh file
@@ -245,7 +276,7 @@ def test_invariants_calculation(client, results):
 
 def test_cad_analysis(client, results):
     """Test comprehensive CAD analysis."""
-    print_header("7. CAD ANALYSIS")
+    print_header("8. CAD ANALYSIS")
 
     def analyse():
         output_file = OUTPUT_DIR / "analysis_result.json"
@@ -300,7 +331,7 @@ def test_cad_analysis(client, results):
 
 def test_multiview(client, results):
     """Test multiview generation."""
-    print_header("8. MULTIVIEW GENERATION")
+    print_header("9. MULTIVIEW GENERATION")
 
     # Test 6a: Shaded with edges
     def multiview_shaded_edges():
@@ -408,6 +439,7 @@ def main():
         test_stl_conversion(client, results)
         test_ply_conversion(client, results)
         test_vecset_conversion(client, results)
+        test_voxel_conversion(client, results)
 
         # 3. 3D Mesh generation
         test_3d_mesh_generation(client, results)

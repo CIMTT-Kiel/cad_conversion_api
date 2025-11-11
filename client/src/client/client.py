@@ -258,6 +258,62 @@ class CADConverterClient:
         except Exception as e:
             raise CADClientError(f"VecSet conversion failed: {str(e)}") from e
 
+    def to_voxel(
+        self,
+        input_file: Union[str, Path],
+        output_file: Optional[Union[str, Path]] = None,
+        resolution: int = 128
+    ) -> Path:
+        """
+        Convert CAD file to voxel representation (sparse format).
+
+        Args:
+            input_file: Input CAD file
+            output_file: Output .npz file (optional)
+            resolution: Voxel grid resolution (default: 128)
+
+        Returns:
+            Path to .npz file containing sparse voxel data
+
+        Note:
+            The output file contains:
+            - indices: Coordinates of occupied voxels (N x 3 array)
+            - shape: Shape of the voxel grid (tuple)
+            - resolution: Grid resolution
+
+            To load the voxel data:
+            ```python
+            import numpy as np
+            data = np.load('voxel_file.npz')
+            indices = data['indices']
+            shape = tuple(data['shape'])
+            resolution = int(data['resolution'])
+            ```
+        """
+        if not self.converter_url:
+            raise CADClientError("Converter service URL not configured")
+
+        input_path = Path(input_file)
+        output_path = Path(output_file) if output_file else Path(f"./{input_path.stem}_voxel.npz")
+
+        if output_path.suffix.lower() != ".npz":
+            raise CADClientError("Output file must have .npz extension")
+
+        if resolution < 16 or resolution > 512:
+            raise CADClientError("Resolution must be between 16 and 512")
+
+        logger.info(f"Converting to voxel: {input_path} -> {output_path} (resolution: {resolution})")
+
+        try:
+            return self._upload_and_download(
+                f"{self.converter_url}/to_voxel",
+                input_path,
+                output_path,
+                {"resolution": str(resolution)}
+            )
+        except Exception as e:
+            raise CADClientError(f"Voxel conversion failed: {str(e)}") from e
+
     def analyse_cad(
         self,
         input_file: Union[str, Path],
