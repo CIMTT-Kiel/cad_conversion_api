@@ -1,31 +1,19 @@
-"""
-CAD Converter Client
-
-Simple client for interacting with CAD conversion services.
-Downloads actual files from the services.
-
-Configuration via:
-1. Config file (config.yaml)
-2. Environment variables
-3. Direct parameters
-"""
+"""CAD Converter Client - Interface for CAD conversion, embedding, and analysis services."""
 
 import json
+import logging
 from pathlib import Path
 from typing import Optional, Union, Dict, Any
 
-import requests, logging
+import requests
 
 from client.config.config import ClientConfig
-
-
-# Setup client logging (call once at module level)
 
 logger = logging.getLogger(__name__)
 
 
 class CADClientError(Exception):
-    """Exception for CAD client errors."""
+    """CAD client operation error."""
     pass
 
 
@@ -40,64 +28,38 @@ class CADConverterClient:
     4. Defaults (localhost)
 
     Examples:
-        # Method 1: Using config.yaml (einfachste Methode)
+        # Method 1: Using config.yaml (simplest method)
         client = CADConverterClient()
 
-        # Method 2: Mit Host-IP
+        # Method 2: With host IP
         client = CADConverterClient(host="172.20.0.1")
 
-        # Method 3: Mit vollständigen URLs
+        # Method 3: With full URLs
         client = CADConverterClient(
             converter_url="http://172.20.0.1:8001",
             embedding_url="http://172.20.0.1:8002",
             analyser_url="http://172.20.0.1:8003"
         )
 
-        # Method 4: Mit eigener Config-Datei
+        # Method 4: With custom config file
         client = CADConverterClient(config_file="my_config.yaml")
     """
 
-    def __init__(
-        self,
-        host: Optional[str] = None,
-        converter_url: Optional[str] = None,
-        embedding_url: Optional[str] = None,
-        analyser_url: Optional[str] = None,
-        rendering_url: Optional[str] = None,
-        timeout: Optional[int] = None,
-        config_file: Optional[str] = None
-    ):
-        """
-        Initialize client with configuration.
+    def __init__(self, host: Optional[str] = None, converter_url: Optional[str] = None,
+                 embedding_url: Optional[str] = None, analyser_url: Optional[str] = None,
+                 rendering_url: Optional[str] = None, timeout: Optional[int] = None,
+                 config_file: Optional[str] = None):
+        """Initialize client with configuration from params, env vars, or config file."""
+        config = ClientConfig(host, converter_url, embedding_url, analyser_url,
+                            rendering_url, timeout, config_file)
 
-        Args:
-            host: Server IP or hostname
-            converter_url: Full converter service URL (overrides host)
-            embedding_url: Full embedding service URL (overrides host)
-            analyser_url: Full analyser service URL (overrides host)
-            rendering_url: Full rendering service URL (overrides host)
-            timeout: Request timeout in seconds
-            config_file: Path to custom config file
-        """
-        # Load configuration
-        self.config = ClientConfig(
-            host=host,
-            converter_url=converter_url,
-            embedding_url=embedding_url,
-            analyser_url=analyser_url,
-            rendering_url=rendering_url,
-            timeout=timeout,
-            config_file=config_file
-        )
+        self.converter_url = config.converter_url
+        self.embedding_url = config.embedding_url
+        self.analyser_url = config.analyser_url
+        self.rendering_url = config.rendering_url
+        self.timeout = config.timeout
 
-        # Set instance variables
-        self.converter_url = self.config.converter_url
-        self.embedding_url = self.config.embedding_url
-        self.analyser_url = self.config.analyser_url
-        self.rendering_url = self.config.rendering_url
-        self.timeout = self.config.timeout
-
-        logger.info("CAD client initialized successfully")
+        logger.info("CAD client initialized")
 
     def _upload_and_download(
         self,
@@ -106,122 +68,84 @@ class CADConverterClient:
         output_path: Path,
         params: dict = None
     ) -> Path:
-        """
-        Upload file and download the converted result.
-        
-        Args:
-            url: Service endpoint
-            file_path: File to upload
-            output_path: Where to save the result
-            params: Additional parameters
-            
-        Returns:
-            Path to downloaded file
-        """
+        """Upload file and download the converted result."""
         file_path = Path(file_path)
-        
+
         if not file_path.exists():
             raise CADClientError(f"File not found: {file_path}")
-        
+
         logger.info(f"Uploading {file_path.name} to {url}")
-        
+
         try:
-            # Upload file
             with open(file_path, "rb") as f:
                 response = requests.post(
                     url,
                     files={"file": (file_path.name, f)},
                     data=params or {},
                     timeout=self.timeout,
-                    stream=True  # Stream for large files
+                    stream=True
                 )
-            
+
             response.raise_for_status()
-            
-            # Save response to output file
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            
+
             with open(output_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     if chunk:
                         f.write(chunk)
-            
+
             if not output_path.exists():
                 raise CADClientError(f"Failed to save result to {output_path}")
-            
+
             logger.info(f"Result saved: {output_path}")
             return output_path
-            
+
         except requests.RequestException as e:
             raise CADClientError(f"Request failed: {str(e)}") from e
         except Exception as e:
             raise CADClientError(f"Download failed: {str(e)}") from e
+
+    def _convert_format(
+        self,
+        input_file: Union[str, Path],
+        output_file: Optional[Union[str, Path]],
+        target_format: str,
+        extension: str
+    ) -> Path:
+        """Generic conversion method for different formats."""
+        input_path = Path(input_file)
+        output_path = Path(output_file) if output_file else Path(f"./{input_path.stem}.{extension}")
+
+        if output_path.suffix.lower() != f".{extension}":
+            raise CADClientError(f"Output file must have .{extension} extension")
+
+        logger.info(f"Converting to {target_format.upper()}: {input_path} -> {output_path}")
+
+        try:
+            return self._upload_and_download(
+                f"{self.converter_url}/convert",
+                input_path,
+                output_path,
+                {"target_format": target_format}
+            )
+        except Exception as e:
+            raise CADClientError(f"{target_format.upper()} conversion failed: {str(e)}") from e
 
     def convert_to_stl(
         self,
         input_file: Union[str, Path],
         output_file: Optional[Union[str, Path]] = None
     ) -> Path:
-        """
-        Convert CAD file to STL format.
-        
-        Args:
-            input_file: Input CAD file
-            output_file: Output STL file (optional)
-            
-        Returns:
-            Path to STL file
-        """
-        input_path = Path(input_file)
-        output_path = Path(output_file) if output_file else Path(f"./{input_path.stem}.stl")
-        
-        if output_path.suffix.lower() != ".stl":
-            raise CADClientError("Output file must have .stl extension")
-        
-        logger.info(f"Converting to STL: {input_path} -> {output_path}")
-        
-        try:
-            return self._upload_and_download(
-                f"{self.converter_url}/convert",
-                input_path,
-                output_path,
-                {"target_format": "stl"}
-            )
-        except Exception as e:
-            raise CADClientError(f"STL conversion failed: {str(e)}") from e
+        """Convert CAD file to STL format."""
+        return self._convert_format(input_file, output_file, "stl", "stl")
 
     def convert_to_ply(
         self,
         input_file: Union[str, Path],
         output_file: Optional[Union[str, Path]] = None
     ) -> Path:
-        """
-        Convert CAD file to PLY format.
-        
-        Args:
-            input_file: Input CAD file
-            output_file: Output PLY file (optional)
-            
-        Returns:
-            Path to PLY file
-        """
-        input_path = Path(input_file)
-        output_path = Path(output_file) if output_file else Path(f"./{input_path.stem}.ply")
-        
-        if output_path.suffix.lower() != ".ply":
-            raise CADClientError("Output file must have .ply extension")
-        
-        logger.info(f"Converting to PLY: {input_path} -> {output_path}")
-        
-        try:
-            return self._upload_and_download(
-                f"{self.converter_url}/convert",
-                input_path,
-                output_path,
-                {"target_format": "ply"}
-            )
-        except Exception as e:
-            raise CADClientError(f"PLY conversion failed: {str(e)}") from e
+        """Convert CAD file to PLY format."""
+        return self._convert_format(input_file, output_file, "ply", "ply")
 
     def convert_to_vecset(
         self,
@@ -229,34 +153,8 @@ class CADConverterClient:
         output_file: Optional[Union[str, Path]] = None,
         export_reconstruction: bool = False
     ) -> Path:
-        """
-        Convert CAD file to VecSet (Vecset as defined in 3dShapeToVecset Paper).
-        
-        Args:
-            input_file: Input CAD file
-            output_file: Output .npy file (optional)
-            export_reconstruction: Export reconstructed STL (not supported via CAD service)
-            
-        Returns:
-            Path to .npy file
-        """
-        input_path = Path(input_file)
-        output_path = Path(output_file) if output_file else Path(f"./{input_path.stem}.npy")
-        
-        if output_path.suffix.lower() != ".npy":
-            raise CADClientError("Output file must have .npy extension")
-        
-        logger.info(f"Converting to VecSet: {input_path} -> {output_path}")
-        
-        try:
-            return self._upload_and_download(
-                f"{self.converter_url}/convert",
-                input_path,
-                output_path,
-                {"target_format": "vecset"}
-            )
-        except Exception as e:
-            raise CADClientError(f"VecSet conversion failed: {str(e)}") from e
+        """Convert CAD file to VecSet (as defined in 3dShapeToVecset Paper)."""
+        return self._convert_format(input_file, output_file, "vecset", "npy")
 
     def to_voxel(
         self,
@@ -264,32 +162,7 @@ class CADConverterClient:
         output_file: Optional[Union[str, Path]] = None,
         resolution: int = 128
     ) -> Path:
-        """
-        Convert CAD file to voxel representation (sparse format).
-
-        Args:
-            input_file: Input CAD file
-            output_file: Output .npz file (optional)
-            resolution: Voxel grid resolution (default: 128)
-
-        Returns:
-            Path to .npz file containing sparse voxel data
-
-        Note:
-            The output file contains:
-            - indices: Coordinates of occupied voxels (N x 3 array)
-            - shape: Shape of the voxel grid (tuple)
-            - resolution: Grid resolution
-
-            To load the voxel data:
-            ```python
-            import numpy as np
-            data = np.load('voxel_file.npz')
-            indices = data['indices']
-            shape = tuple(data['shape'])
-            resolution = int(data['resolution'])
-            ```
-        """
+        """Convert CAD file to sparse voxel representation (.npz). Resolution: 16-512."""
         if not self.converter_url:
             raise CADClientError("Converter service URL not configured")
 
@@ -299,7 +172,7 @@ class CADConverterClient:
         if output_path.suffix.lower() != ".npz":
             raise CADClientError("Output file must have .npz extension")
 
-        if resolution < 16 or resolution > 512:
+        if not 16 <= resolution <= 512:
             raise CADClientError("Resolution must be between 16 and 512")
 
         logger.info(f"Converting to voxel: {input_path} -> {output_path} (resolution: {resolution})")
@@ -319,26 +192,7 @@ class CADConverterClient:
         input_file: Union[str, Path],
         output_file: Optional[Union[str, Path]] = None
     ) -> Dict[str, Any]:
-        """
-        Analyse CAD file and get comprehensive geometry statistics.
-
-        Args:
-            input_file: Input STEP file (.step, .stp)
-            output_file: Optional output JSON file path. If not provided,
-                        will save to same directory as input with _analysis.json suffix
-
-        Returns:
-            Analysis results as dictionary containing:
-            - metadata: Analysis metadata (id, filename, timestamp)
-            - summary: Overall statistics (volume, area, faces, edges, vertices, etc.)
-            - bounding_box: Min/max coordinates
-            - dimensions: Length, width, height, diagonal
-            - center_of_mass: X, Y, Z coordinates
-            - surface_type_counts: Dictionary of surface types and their counts
-            - edge_statistics: Min/max/average edge lengths
-            - validity: Validation checks
-            - objects: List of per-object detailed analysis
-        """
+        """Analyse CAD file - returns geometry statistics, bounding box, dimensions, surface types, and validity checks."""
         if not self.analyser_url:
             raise CADClientError("Analyser service URL not configured")
 
@@ -350,12 +204,7 @@ class CADConverterClient:
         if input_path.suffix.lower() not in [".step", ".stp"]:
             raise CADClientError("Analyser only supports STEP files (.step, .stp)")
 
-        # Determine output file path
-        if output_file is None:
-            output_path = input_path.parent / f"{input_path.stem}_analysis.json"
-        else:
-            output_path = Path(output_file)
-
+        output_path = Path(output_file) if output_file else input_path.parent / f"{input_path.stem}_analysis.json"
         logger.info(f"Analysing: {input_path}")
 
         try:
@@ -368,15 +217,13 @@ class CADConverterClient:
                 )
 
             response.raise_for_status()
-
-            # Save the JSON file
             output_path.parent.mkdir(parents=True, exist_ok=True)
+
             with open(output_path, "wb") as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     if chunk:
                         f.write(chunk)
 
-            # Load and return the JSON content
             with open(output_path, "r") as f:
                 result = json.load(f)
 
@@ -398,33 +245,7 @@ class CADConverterClient:
         input_file: Union[str, Path],
         output_dir: Union[str, Path]
     ) -> Dict[str, Any]:
-        """
-        Generate technical drawing views from a STEP file as DXF files.
-
-        Creates orthographic projections similar to technical drawings:
-        - Top view
-        - Front view
-        - Side view
-
-        Args:
-            input_file: Input STEP file (.step, .stp)
-            output_dir: Directory to extract and save DXF view files
-
-        Returns:
-            Dictionary with results:
-            - success: Boolean indicating success
-            - views: List of view names generated
-            - output_dir: Directory where DXF views were saved
-            - total_views: Number of views generated
-
-        Note:
-            DXF files can be opened with any CAD software like FreeCAD,
-            AutoCAD, LibreCAD, or online DXF viewers.
-
-        Example:
-            result = client.to_drawing_views("model.step", "./drawings")
-            print(f"Generated {len(result['views'])} technical DXF views")
-        """
+        """Generate orthographic drawing views (top, front, side) as DXF files."""
         import zipfile
 
         if not self.analyser_url:
@@ -440,11 +261,9 @@ class CADConverterClient:
             raise CADClientError("Drawing views only support STEP files (.step, .stp)")
 
         output_path.mkdir(parents=True, exist_ok=True)
-
         logger.info(f"Generating drawing views: {input_path}")
 
         try:
-            # Send request to analyser service
             with open(input_path, "rb") as f:
                 response = requests.post(
                     f"{self.analyser_url}/to_drawing_views",
@@ -455,22 +274,18 @@ class CADConverterClient:
 
             response.raise_for_status()
 
-            # Save ZIP file temporarily
             zip_file = output_path / f"{input_path.stem}_drawing_views.zip"
             with open(zip_file, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     if chunk:
                         f.write(chunk)
 
-            # Extract ZIP file
             with zipfile.ZipFile(zip_file, 'r') as zip_ref:
                 zip_ref.extractall(output_path)
 
-            # Get list of extracted DXF files
             extracted_files = list(output_path.glob("*.dxf"))
             view_names = [f.stem for f in extracted_files]
 
-            # Remove ZIP file after extraction
             try:
                 zip_file.unlink()
                 logger.debug(f"Removed ZIP file: {zip_file}")
@@ -501,32 +316,9 @@ class CADConverterClient:
         total_imgs: int = 20,
         part_number: Optional[str] = None
     ) -> Dict[str, Any]:
-        """
-        Generate multiple views from a CAD file and save them to a directory.
+        """Generate multiple rendered views. Modes: shaded_with_edges, shaded, wireframe."""
+        import base64
 
-        Args:
-            input_file: Input CAD file (STEP format)
-            output_dir: Directory to save rendered images
-            render_mode: Rendering mode - "shaded_with_edges", "shaded", or "wireframe" (default: "shaded_with_edges")
-            total_imgs: Number of views to generate (default: 20)
-            part_number: Part number or identifier (optional, defaults to filename)
-
-        Returns:
-            Dictionary with rendering results:
-            - success: Boolean indicating success
-            - images: List of paths to saved images
-            - total_images: Number of images generated
-            - output_dir: Directory where images were saved
-
-        Example:
-            result = client.to_multiview(
-                "model.step",
-                "./output/renders",
-                render_mode="shaded_with_edges",
-                total_imgs=20
-            )
-            print(f"Generated {result['total_images']} views in {result['output_dir']}")
-        """
         if not self.rendering_url:
             raise CADClientError("Rendering service URL not configured")
 
@@ -535,13 +327,10 @@ class CADConverterClient:
         if not input_path.exists():
             raise CADClientError(f"File not found: {input_path}")
 
-        if not input_path.suffix.lower() in [".step", ".stp"]:
+        if input_path.suffix.lower() not in [".step", ".stp"]:
             raise CADClientError("Rendering service only supports STEP files (.step, .stp)")
 
-        # Use filename as part_number if not provided
-        if part_number is None:
-            part_number = input_path.stem
-
+        part_number = part_number or input_path.stem
         logger.info(f"Generating multiview: {input_path} (mode: {render_mode}, views: {total_imgs})")
 
         try:
@@ -558,24 +347,19 @@ class CADConverterClient:
                 )
 
             response.raise_for_status()
-
             result = response.json()
 
-            # Save images and perspective data to output directory
-            import base64
             output_path = Path(output_dir)
             output_path.mkdir(parents=True, exist_ok=True)
 
             saved_images = []
             perspectives = result.get("perspectives", [])
 
-            # Save all images
             for img_data in result.get("images", []):
                 filename = img_data.get("filename")
                 img_base64 = img_data.get("data")
 
                 if filename and img_base64:
-                    # Save image
                     img_path = output_path / filename
                     img_bytes = base64.b64decode(img_base64)
                     with open(img_path, "wb") as f:
@@ -583,7 +367,6 @@ class CADConverterClient:
                     saved_images.append(str(img_path))
                     logger.info(f"Saved image: {img_path}")
 
-            # Save all camera/perspective data in a single JSON file
             if perspectives:
                 camera_data_path = output_path / "camera_data.json"
                 with open(camera_data_path, "w") as f:
@@ -614,24 +397,7 @@ class CADConverterClient:
         output_file: Optional[Union[str, Path]] = None,
         mesh_size: Optional[float] = None
     ) -> Path:
-        """
-        Generate a 3D mesh from a STEP file using Gmsh.
-
-        Args:
-            input_file: Input STEP file
-            output_file: Output .msh file (optional)
-            mesh_size: Optional mesh size parameter for controlling mesh density
-
-        Returns:
-            Path to .msh file
-
-        Example:
-            # Generate mesh with default settings
-            client.to_3d_mesh("model.step", "output.msh")
-
-            # Generate mesh with custom mesh size
-            client.to_3d_mesh("model.step", "output.msh", mesh_size=0.5)
-        """
+        """Generate a 3D mesh from a STEP file using Gmsh."""
         input_path = Path(input_file)
         output_path = Path(output_file) if output_file else Path(f"./{input_path.stem}.msh")
 
@@ -640,9 +406,7 @@ class CADConverterClient:
 
         logger.info(f"Generating 3D mesh: {input_path} -> {output_path}")
 
-        params = {}
-        if mesh_size is not None:
-            params["mesh_size"] = str(mesh_size)
+        params = {"mesh_size": str(mesh_size)} if mesh_size is not None else {}
 
         try:
             return self._upload_and_download(
@@ -660,30 +424,7 @@ class CADConverterClient:
         output_file: Optional[Union[str, Path]] = None,
         normalized: bool = False
     ) -> Dict[str, Any]:
-        """
-        Calculate geometric invariants from a 3D mesh file.
-
-        Args:
-            input_file: Input mesh file (.msh format)
-            output_file: Optional JSON file to save results
-            normalized: If True, scale mesh to unit cube (default: False)
-
-        Returns:
-            Dictionary with moments and invariants:
-            - filename: Input filename
-            - normalized: Whether mesh was normalized
-            - total_moments: Number of moments calculated
-            - total_invariants: Number of invariants calculated
-            - moments: Dictionary of moment values (mue_pqr)
-            - invariants: Dictionary of invariant values (pi_pqr)
-
-        Example:
-            # Calculate invariants from mesh file
-            result = client.to_invariants("model.msh")
-
-            # Save to JSON file
-            result = client.to_invariants("model.msh", "invariants.json", normalized=True)
-        """
+        """Calculate geometric invariants from .msh file - returns moments and invariants."""
         input_path = Path(input_file)
 
         if not input_path.exists():
@@ -695,7 +436,6 @@ class CADConverterClient:
         logger.info(f"Calculating invariants: {input_path}")
 
         try:
-            # Upload mesh file and get invariants
             with open(input_path, "rb") as f:
                 response = requests.post(
                     f"{self.converter_url}/invariants",
@@ -707,7 +447,6 @@ class CADConverterClient:
             response.raise_for_status()
             result = response.json()
 
-            # Save to file if requested
             if output_file:
                 output_path = Path(output_file)
                 if output_path.suffix.lower() != ".json":
@@ -731,71 +470,24 @@ class CADConverterClient:
             raise CADClientError(f"Invariants calculation failed: {str(e)}") from e
 
     def get_service_status(self) -> Dict[str, Dict[str, Any]]:
-        """
-        Get status of all configured services.
-
-        Returns:
-            Service status information for each service
-        """
+        """Get status of all configured services."""
         status = {}
+        services = [
+            ("converter_service", self.converter_url),
+            ("embedding_service", self.embedding_url),
+            ("analyser_service", self.analyser_url),
+            ("rendering_service", self.rendering_url)
+        ]
 
-        # Check Converter service
-        try:
-            response = requests.get(f"{self.converter_url}/health", timeout=10)
-            status["converter_service"] = {
-                "status": "healthy" if response.status_code == 200 else "unhealthy",
-                "url": self.converter_url
-            }
-        except Exception as e:
-            status["converter_service"] = {
-                "status": "unreachable",
-                "url": self.converter_url,
-                "error": str(e)
-            }
-
-        # Check Embedding service if configured
-        if self.embedding_url:
-            try:
-                response = requests.get(f"{self.embedding_url}/health", timeout=10)
-                status["embedding_service"] = {
-                    "status": "healthy" if response.status_code == 200 else "unhealthy",
-                    "url": self.embedding_url
-                }
-            except Exception as e:
-                status["embedding_service"] = {
-                    "status": "unreachable",
-                    "url": self.embedding_url,
-                    "error": str(e)
-                }
-
-        # Check Analyser service if configured
-        if self.analyser_url:
-            try:
-                response = requests.get(f"{self.analyser_url}/health", timeout=10)
-                status["analyser_service"] = {
-                    "status": "healthy" if response.status_code == 200 else "unhealthy",
-                    "url": self.analyser_url
-                }
-            except Exception as e:
-                status["analyser_service"] = {
-                    "status": "unreachable",
-                    "url": self.analyser_url,
-                    "error": str(e)
-                }
-
-        # Check Rendering service if configured
-        if self.rendering_url:
-            try:
-                response = requests.get(f"{self.rendering_url}/health", timeout=10)
-                status["rendering_service"] = {
-                    "status": "healthy" if response.status_code == 200 else "unhealthy",
-                    "url": self.rendering_url
-                }
-            except Exception as e:
-                status["rendering_service"] = {
-                    "status": "unreachable",
-                    "url": self.rendering_url,
-                    "error": str(e)
-                }
+        for name, url in services:
+            if url:
+                try:
+                    response = requests.get(f"{url}/health", timeout=10)
+                    status[name] = {
+                        "status": "healthy" if response.status_code == 200 else "unhealthy",
+                        "url": url
+                    }
+                except Exception as e:
+                    status[name] = {"status": "unreachable", "url": url, "error": str(e)}
 
         return status

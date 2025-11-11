@@ -1,114 +1,86 @@
 """
 CAD File Analyser
 
-This module provides functions to analyze CAD files and extract information
-about static stats like volume, faces, face_types, etc.
+Provides functions to analyze CAD files and extract statistics like volume, faces, and face types.
 """
+
+import logging
+from collections import Counter, defaultdict
+from typing import Dict, List
 
 import FreeCAD
 import Part
-from collections import defaultdict
-from typing import Dict, List, Tuple
-from pathlib import Path
-import math, logging
+
+logger = logging.getLogger(__name__)
+
 
 def load_step_file(file_path: str) -> FreeCAD.Document:
-    """
-    Load a STEP file into a FreeCAD document.
-
-    Args:
-        file_path: Path to the STEP file
-
-    Returns:
-        FreeCAD document containing the imported geometry from the STEP file
-    """
+    """Load a STEP file into a FreeCAD document."""
     doc = FreeCAD.newDocument("TempDoc")
     Part.insert(file_path, doc.Name)
     return doc
 
 
+SURFACE_TYPE_MAPPING = {
+    'Part::GeomPlane': 'Plane',
+    'Part::GeomCylinder': 'Cylinder',
+    'Part::GeomSphere': 'Sphere',
+    'Part::GeomCone': 'Cone',
+    'Part::GeomToroid': 'Torus',
+    'Part::GeomBSplineSurface': 'BSpline Surface',
+    'Part::GeomBezierSurface': 'Bezier Surface',
+    'Part::GeomSurfaceOfRevolution': 'Surface of Revolution',
+    'Part::GeomSurfaceOfExtrusion': 'Surface of Extrusion',
+    'Part::GeomOffsetSurface': 'Offset Surface',
+    'Part::GeomTrimmedSurface': 'Trimmed Surface',
+}
+
+
 def get_surface_type(face) -> str:
-    """
-    map the prop. freecad type of faces to basic types - just for clarity.
-
-    Args:
-        face: A FreeCAD face object
-
-    Returns:
-        String describing the surface type
-    """
-    surface = face.Surface
-    surface_type = surface.TypeId
-
-    # Map FreeCAD surface types to more readable names
-    type_mapping = {
-        'Part::GeomPlane': 'Plane',
-        'Part::GeomCylinder': 'Cylinder',
-        'Part::GeomSphere': 'Sphere',
-        'Part::GeomCone': 'Cone',
-        'Part::GeomToroid': 'Torus',
-        'Part::GeomBSplineSurface': 'BSpline Surface',
-        'Part::GeomBezierSurface': 'Bezier Surface',
-        'Part::GeomSurfaceOfRevolution': 'Surface of Revolution',
-        'Part::GeomSurfaceOfExtrusion': 'Surface of Extrusion',
-        'Part::GeomOffsetSurface': 'Offset Surface',
-        'Part::GeomTrimmedSurface': 'Trimmed Surface',
-    }
-
-    return type_mapping.get(surface_type, surface_type)
+    """Map FreeCAD surface type to readable name."""
+    surface_type = face.Surface.TypeId
+    return SURFACE_TYPE_MAPPING.get(surface_type, surface_type)
 
 
-def analyze_surfaces(doc: FreeCAD.Document) -> Dict[str, int]:
-    """
-    Analyze all surfaces in a FreeCAD document and count them by type.
+def get_edge_type(edge) -> str:
+    """Classify edge type based on curve type."""
+    if not hasattr(edge.Curve, 'TypeId'):
+        return 'Other'
 
-    Args:
-        doc: FreeCAD document 
-
-    Returns:
-        Dictionary mapping surface type names to their counts
-    """
-    surface_counts = defaultdict(int)
-
-    for obj in doc.Objects:
-        if hasattr(obj, 'Shape'):
-            shape = obj.Shape
-            for face in shape.Faces:
-                surface_type = get_surface_type(face)
-                surface_counts[surface_type] += 1
-
-    return dict(surface_counts)
+    curve_type = edge.Curve.TypeId
+    if 'Line' in curve_type:
+        return 'Line'
+    elif 'Circle' in curve_type:
+        return 'Circle'
+    elif 'BSpline' in curve_type:
+        return 'BSpline'
+    elif 'Bezier' in curve_type:
+        return 'Bezier'
+    elif 'Ellipse' in curve_type:
+        return 'Ellipse'
+    return 'Other'
 
 
-def get_detailed_surface_info(doc: FreeCAD.Document) -> List[Dict]:
-    """
-    Get detailed information about each surface including type and properties.
+def calculate_center_of_mass(solids: List) -> Dict[str, float]:
+    """Calculate weighted center of mass from list of solids."""
+    total_volume = weighted_x = weighted_y = weighted_z = 0.0
 
-    Args:
-        doc: FreeCAD document containing the geometry
+    for solid in solids:
+        volume = solid.Volume
+        if volume > 0:
+            com = solid.CenterOfMass
+            weighted_x += com.x * volume
+            weighted_y += com.y * volume
+            weighted_z += com.z * volume
+            total_volume += volume
 
-    Returns:
-        List of dictionaries containing detailed surface information
-    """
-    surfaces = []
-
-    for obj in doc.Objects:
-        if hasattr(obj, 'Shape'):
-            shape = obj.Shape
-            for idx, face in enumerate(shape.Faces):
-                surface_type = get_surface_type(face)
-                surface_info = {
-                    'object_name': obj.Name,
-                    'face_index': idx,
-                    'surface_type': surface_type,
-                    'area': face.Area,
-                    'center_of_mass': (face.CenterOfMass.x,
-                                      face.CenterOfMass.y,
-                                      face.CenterOfMass.z)
-                }
-                surfaces.append(surface_info)
-
-    return surfaces
+    if total_volume > 0:
+        return {
+            'x': weighted_x / total_volume,
+            'y': weighted_y / total_volume,
+            'z': weighted_z / total_volume
+        }
+    return {}
 
 
 def get_comprehensive_analysis(doc: FreeCAD.Document) -> Dict:
