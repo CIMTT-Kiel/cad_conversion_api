@@ -1,6 +1,6 @@
 services:
   converter-service:
-    build: ./converter_service
+    build: ./services/converter_service
     container_name: cad-converter-service
     ports:
       - "8001:8000"
@@ -12,7 +12,7 @@ services:
     restart: unless-stopped
 
   embedding-service:
-    build: ./embedding_service
+    build: ./services/embedding_service
     container_name: cad-embedding-service
     ports:
       - "8003:8000"
@@ -31,7 +31,7 @@ services:
     restart: unless-stopped
 
   analyser-service:
-    build: ./analyser_service
+    build: ./services/analyser_service
     container_name: cad-analyser-service
     ports:
       - "8002:8000"
@@ -43,7 +43,7 @@ services:
     restart: unless-stopped
 
   rendering-service:
-    build: ./rendering_service
+    build: ./services/rendering_service
     container_name: cad-rendering-service
     ports:
       - "8004:8000"

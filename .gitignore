@@ -24,8 +24,14 @@ data/
 *.json
 *.zip
 
+.claude
+
 
 # Rendered images from tests
 client/scripts/rendered_images/
 client/scripts/example_rendered_images/
+
+# Local config overrides (keep default configs in version control)
+config/*.local.yaml
+config/client.local.yaml
 

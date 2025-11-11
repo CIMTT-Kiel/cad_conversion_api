@@ -130,9 +130,9 @@ cp /pfad/zu/checkpoint-110.pth models/
 docker compose up --build
 
 # Oder einzeln für Development
-cd converter_service && uv run python main.py &
-cd embedding_service && uv run python main.py &
-cd analyser_service && uv run python main.py &
+cd services/converter_service && uv run python main.py &
+cd services/embedding_service && uv run python main.py &
+cd services/analyser_service && uv run python main.py &
 ```
 
 ### 3. Services testen
@@ -191,17 +191,17 @@ docker compose up --build analyser-service
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Converter Service
-cd converter_service
+cd services/converter_service
 uv sync
 uv run python main.py
 
 # Embedding Service
-cd embedding_service
+cd services/embedding_service
 uv sync
 uv run python main.py
 
 # Analyser Service
-cd analyser_service
+cd services/analyser_service
 uv sync
 # FreeCAD muss separat installiert werden
 sudo apt-get install freecad-python3
@@ -405,32 +405,41 @@ cad_conversion_api/
 ├── README.md                    # Diese Datei
 ├── docker-compose.yml          # Docker Orchestrierung
 │
-├── converter_service/           # CAD Konvertierungsservice
-│   ├── Dockerfile
-│   ├── pyproject.toml
-│   ├── main.py                  # FastAPI Anwendung
-│   └── src/converter_service/
-│       └── services/
-│           └── cad_conversion.py # Konvertierungslogik
+├── config/                      # Zentrale Konfiguration
+│   └── client.yaml             # Client-Konfiguration
 │
-├── embedding_service/           # Embedding Generierungsservice
-│   ├── Dockerfile
-│   ├── pyproject.toml
-│   ├── main.py                  # FastAPI Anwendung
-│   └── src/embedding_service/
-│       ├── models/              # ML Model Definitionen
-│       │   ├── autoencoder.py
-│       │   ├── bottleneck.py
-│       │   └── utils.py
-│       └── services/
-│           └── vecset.py        # VecSet Embedding
-│
-├── analyser_service/            # CAD Analyseservice (FreeCAD)
-│   ├── Dockerfile
-│   ├── pyproject.toml
-│   ├── main.py                  # FastAPI Anwendung
-│   └── src/analyser_service/
-│       └── cad_stats.py         # FreeCAD Analyselogik
+├── services/                    # Alle Microservices
+│   ├── converter_service/       # CAD Konvertierungsservice
+│   │   ├── Dockerfile
+│   │   ├── pyproject.toml
+│   │   ├── main.py              # FastAPI Anwendung
+│   │   └── src/converter_service/
+│   │       └── services/
+│   │           └── cad_conversion.py # Konvertierungslogik
+│   │
+│   ├── embedding_service/       # Embedding Generierungsservice
+│   │   ├── Dockerfile
+│   │   ├── pyproject.toml
+│   │   ├── main.py              # FastAPI Anwendung
+│   │   └── src/embedding_service/
+│   │       ├── models/          # ML Model Definitionen
+│   │       │   ├── autoencoder.py
+│   │       │   ├── bottleneck.py
+│   │       │   └── utils.py
+│   │       └── services/
+│   │           └── vecset.py    # VecSet Embedding
+│   │
+│   ├── analyser_service/        # CAD Analyseservice (FreeCAD)
+│   │   ├── Dockerfile
+│   │   ├── pyproject.toml
+│   │   ├── main.py              # FastAPI Anwendung
+│   │   └── src/analyser_service/
+│   │       └── cad_stats.py     # FreeCAD Analyselogik
+│   │
+│   └── rendering_service/       # Rendering Service
+│       ├── Dockerfile
+│       ├── main.py
+│       └── src/rendering_service/
 │
 ├── client/                      # Python Client SDK
 │   ├── pyproject.toml
@@ -589,7 +598,7 @@ cd cad_conversion_api
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Services separat entwickeln
-cd converter_service
+cd services/converter_service
 uv sync
 uv run python main.py
 
@@ -621,10 +630,10 @@ Jeder Service bietet interaktive API-Dokumentation:
 
 ```bash
 # Linting (falls konfiguriert)
-ruff check converter_service/ embedding_service/ analyser_service/ client/
+ruff check services/ client/
 
 # Type Checking
-mypy converter_service/ embedding_service/ analyser_service/ client/
+mypy services/ client/
 
 # Tests (falls vorhanden)
 pytest tests/

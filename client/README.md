@@ -17,7 +17,11 @@ Der Client unterstützt drei Konfigurationsmethoden (in Prioritätsreihenfolge):
 
 ### 1. Config-File (empfohlen)
 
-Erstellen Sie `config.yaml` im client-Verzeichnis:
+Erstellen Sie die Config-Datei im zentralen `/config` Verzeichnis des Projekts:
+
+```bash
+# Projekt-Root/config/client.yaml
+```
 
 ```yaml
 # Server-IP oder Hostname
@@ -33,7 +37,7 @@ ports:
 timeout: 300
 ```
 
-Für lokale Overrides können Sie `config.local.yaml` erstellen (wird nicht ins Git committed).
+Für lokale Overrides können Sie `config/client.local.yaml` erstellen (wird nicht ins Git committed).
 
 ### 2. Umgebungsvariablen
 
@@ -139,20 +143,21 @@ python example.py
 
 ### Mehrere Server-Umgebungen
 
-Erstellen Sie verschiedene Config-Files:
+Erstellen Sie verschiedene Config-Files im zentralen `/config` Verzeichnis:
 
 ```bash
-client/
-├── config.yaml              # Default (localhost)
-├── config.production.yaml   # Produktions-Server
-├── config.development.yaml  # Entwicklungs-Server
+config/
+├── client.yaml               # Default (wird automatisch geladen)
+├── client.local.yaml         # Lokale Überschreibung (in .gitignore)
+├── client.production.yaml    # Produktions-Server
+├── client.development.yaml   # Entwicklungs-Server
 ```
 
 Verwendung:
 
 ```python
 # Produktions-Config verwenden
-client = CADConverterClient(config_file="config.production.yaml")
+client = CADConverterClient(config_file="config/client.production.yaml")
 ```
 
 ### Timeout anpassen
@@ -214,12 +219,12 @@ Prüft Status aller konfigurierten Services.
 ### "Config file not found"
 
 ```python
-# Prüfe, ob config.yaml existiert
+# Prüfe, ob Config-Datei existiert
 from pathlib import Path
-print(Path("config.yaml").exists())
+print(Path("config/client.yaml").exists())
 
-# Verwende absolute Pfade
-client = CADConverterClient(config_file="/absolute/path/to/config.yaml")
+# Verwende absolute Pfade wenn nötig
+client = CADConverterClient(config_file="/absolute/path/to/config/client.yaml")
 ```
 
 ### "Service unreachable"

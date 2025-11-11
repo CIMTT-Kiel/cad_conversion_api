@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 import logging
 
+from client.constants import PATHS
+
 
 logger = logging.getLogger(__name__)
 
@@ -145,11 +147,10 @@ class ClientConfig:
             config_path = Path(config_file)
         else:
             # Try multiple default locations
-            client_dir = Path(__file__).parent
             possible_paths = [
-                client_dir / "config.local.yaml",  # Local override
-                client_dir / "config.yaml",        # Default
-                Path.cwd() / "config.yaml",        # Current directory
+                PATHS.CONFIG / "client.local.yaml",  # Local override in central config
+                PATHS.CONFIG / "client.yaml",         # Default in central config
+                Path.cwd() / "config.yaml",           # Current directory (fallback)
             ]
 
             config_path = None
