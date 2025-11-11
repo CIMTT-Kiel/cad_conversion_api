@@ -24,6 +24,7 @@ data/
 *.json
 *.zip
 *.npz
+*.dxf
 
 .claude
 

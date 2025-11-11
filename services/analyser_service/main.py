@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from src.analyser_service.cad_stats import (load_step_file,
                                             get_detailed_surface_info,
                                             get_comprehensive_analysis)
+from src.analyser_service.drawing_views import DrawingViewsGenerator, DrawingViewsError
 
 # Simple logging setup from environment variables
 # logging.basicConfig(
@@ -119,6 +120,87 @@ async def analyse_cad_file(
             detail=f"Analysis failed: {str(e)}"
         )
 
+
+@app.post("/to_drawing_views")
+async def generate_drawing_views(
+    file: UploadFile = File(...)
+):
+    """
+    Generate technical drawing views from STEP file as DXF files.
+
+    Creates orthographic projections similar to technical drawings:
+    - Top view
+    - Front view
+    - Side view
+
+    Args:
+        file: Uploaded STEP file (.step, .stp)
+
+    Returns:
+        FileResponse: ZIP file containing DXF files of all views
+    """
+    import zipfile
+    import shutil
+
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    if not file.filename.lower().endswith('.step') and not file.filename.lower().endswith('.stp'):
+        raise HTTPException(
+            status_code=400,
+            detail="Only STEP files (.step, .stp) are supported"
+        )
+
+    drawing_id = str(uuid.uuid4())
+    logger.info(f"Starting drawing views generation {drawing_id}: {file.filename}")
+
+    # Create temporary directory
+    temp_dir = Path(tempfile.mkdtemp(prefix=f"drawing_views_{drawing_id}_"))
+    input_file = temp_dir / file.filename
+    output_dir = temp_dir / "views"
+
+    try:
+        # Save uploaded file
+        with open(input_file, "wb") as f:
+            content = await file.read()
+            f.write(content)
+
+        logger.info(f"File saved to {input_file}, generating views")
+
+        # Generate drawing views
+        generator = DrawingViewsGenerator(input_file)
+        view_files = generator.generate_views(output_dir)
+
+        if not view_files:
+            raise DrawingViewsError("No views were generated")
+
+        # Create ZIP file with all views
+        zip_path = temp_dir / f"{Path(file.filename).stem}_drawing_views.zip"
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for view_file in view_files:
+                zipf.write(view_file, view_file.name)
+
+        logger.info(f"Drawing views generation {drawing_id} completed: {len(view_files)} views")
+
+        return FileResponse(
+            path=str(zip_path),
+            filename=f"{Path(file.filename).stem}_drawing_views.zip",
+            media_type="application/zip",
+            background=None
+        )
+
+    except DrawingViewsError as e:
+        logger.error(f"Drawing views generation {drawing_id} failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Drawing views generation failed: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Drawing views generation {drawing_id} failed: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Drawing views generation failed: {str(e)}"
+        )
 
 
 # @app.post("/convert")

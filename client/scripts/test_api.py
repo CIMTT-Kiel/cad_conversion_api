@@ -329,9 +329,37 @@ def test_cad_analysis(client, results):
     return run_test(analyse, results, "Comprehensive CAD Geometry Analysis")
 
 
+def test_drawing_views(client, results):
+    """Test technical drawing views generation."""
+    print_header("9. TECHNICAL DRAWING VIEWS (DXF)")
+
+    def generate_drawing_views():
+        output_dir = OUTPUT_DIR / "drawing_views"
+        result = client.to_drawing_views(SAMPLE_FILE, output_dir)
+
+        if not result.get('success'):
+            raise Exception("Drawing views generation failed")
+
+        total_views = result.get('total_views', 0)
+        views = result.get('views', [])
+
+        # Verify DXF files exist
+        dxf_files = list(output_dir.glob("*.dxf"))
+        if len(dxf_files) != total_views:
+            raise Exception(f"Expected {total_views} DXF files, found {len(dxf_files)}")
+
+        print(f"\n      DXF views generated: {total_views}")
+        print(f"      View names: {', '.join(views)}")
+        print(f"      Output: {output_dir}")
+        print(f"      Format: DXF (can be opened in CAD software)")
+        return result
+
+    return run_test(generate_drawing_views, results, "Technical Drawing Views (DXF) Generation")
+
+
 def test_multiview(client, results):
     """Test multiview generation."""
-    print_header("9. MULTIVIEW GENERATION")
+    print_header("10. MULTIVIEW GENERATION")
 
     # Test 6a: Shaded with edges
     def multiview_shaded_edges():
@@ -450,7 +478,10 @@ def main():
         # 5. Analysis tests
         test_cad_analysis(client, results)
 
-        # 6. Multiview generation tests
+        # 6. Technical drawing views
+        test_drawing_views(client, results)
+
+        # 7. Multiview generation tests
         test_multiview(client, results)
 
     except KeyboardInterrupt:

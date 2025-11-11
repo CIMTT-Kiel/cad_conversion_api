@@ -1,0 +1,171 @@
+"""
+Technical Drawing Views Generator using FreeCAD TechDraw
+
+Generates orthographic projection views as DXF files.
+"""
+
+import logging
+import os
+import sys
+import tempfile
+from pathlib import Path
+from typing import List, Tuple, Union
+import shutil
+
+import ezdxf
+import FreeCAD
+import Part
+import TechDraw
+
+
+logger = logging.getLogger(__name__)
+
+
+class DrawingViewsError(Exception):
+    """Custom exception for drawing views errors."""
+    pass
+
+
+class DrawingViewsGenerator:
+    """
+    Generate technical drawing views from STEP files using FreeCAD.
+
+    Creates orthographic projections similar to technical drawings:
+    - Top view [0,0,1]
+    - Front view [0,1,0]
+    - Side view [1,0,0]
+    """
+
+    # Standard orthographic views
+    STANDARD_VIEWS = {
+        'top': [0, 0, 1],
+        'front': [0, 1, 0],
+        'side': [1, 0, 0]
+    }
+
+    def __init__(self, step_file: Union[str, Path]):
+        """
+        Initialize generator with STEP file.
+
+        Args:
+            step_file: Path to STEP file
+
+        Raises:
+            DrawingViewsError: If file doesn't exist or is not a STEP file
+        """
+        self.step_file = Path(step_file)
+
+        if not self.step_file.exists():
+            raise DrawingViewsError(f"STEP file not found: {self.step_file}")
+
+        if self.step_file.suffix.lower() not in ['.step', '.stp']:
+            raise DrawingViewsError(f"Only STEP files supported, got: {self.step_file.suffix}")
+
+        self.temp_dir = self.step_file.parent / "tmp_drawing"
+        self.temp_dir.mkdir(exist_ok=True)
+
+        logger.info(f"Initialized DrawingViewsGenerator for {self.step_file}")
+
+    def generate_views(self, output_dir: Union[str, Path]) -> List[Path]:
+        """
+        Generate technical drawing views and export as DXF files.
+
+        Args:
+            output_dir: Directory to save view DXF files
+
+        Returns:
+            List of paths to generated DXF files
+
+        Raises:
+            DrawingViewsError: If view generation fails
+        """
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"Generating drawing views to {output_dir}")
+
+        # Create FreeCAD document
+        doc_name = 'TempDrawing'
+        try:
+            # Close any existing document with the same name
+            if FreeCAD.ActiveDocument and FreeCAD.ActiveDocument.Name == doc_name:
+                FreeCAD.closeDocument(doc_name)
+
+            newdoc = FreeCAD.newDocument(doc_name)
+            FreeCAD.setActiveDocument(doc_name)
+            doc = FreeCAD.getDocument(doc_name)
+
+            # Create TechDraw page and template
+            doc.addObject('TechDraw::DrawPage', 'Page')
+            doc.addObject('TechDraw::DrawSVGTemplate', 'Template')
+            doc.Page.Template = doc.Template
+
+            # Load STEP file
+            logger.debug(f"Loading STEP file: {self.step_file}")
+            shape = Part.Shape()
+            shape.read(str(self.step_file))
+            geom = doc.addObject('Part::Feature', 'Shape')
+            geom.Shape = shape
+
+            # Add source to document
+            source = [obj for obj in doc.findObjects() if type(obj) == Part.Feature]
+
+            # Set up view
+            doc.addObject('TechDraw::DrawViewPart', 'View')
+            doc.View.Source = source
+            doc.View.XDirection = FreeCAD.Vector(1.000, 0.000, 0.000)
+
+            # Add view to page
+            doc.Page.addView(doc.View)
+            doc.recompute()
+
+            # Generate DXF files for each view
+            output_files = []
+
+            for view_name, direction in self.STANDARD_VIEWS.items():
+                try:
+                    logger.debug(f"Generating {view_name} view: direction {direction}")
+
+                    # Set view direction
+                    doc.View.Direction = FreeCAD.Vector(direction[0], direction[1], direction[2])
+                    doc.recompute()
+                    doc.View.recompute()
+                    doc.recompute()  # Recompute again to ensure everything is updated
+
+                    # Export as DXF to temp directory
+                    temp_dxf_file = self.temp_dir / f"view_{view_name}.dxf"
+                    TechDraw.writeDXFPage(doc.Page, str(temp_dxf_file))
+
+                    # Copy to output directory with proper name
+                    output_dxf_file = output_dir / f"{view_name}_view.dxf"
+                    shutil.copy2(temp_dxf_file, output_dxf_file)
+                    output_files.append(output_dxf_file)
+
+                    # Log entity count for debugging
+                    try:
+                        dxf_doc = ezdxf.readfile(str(output_dxf_file))
+                        entity_count = len(list(dxf_doc.modelspace()))
+                        logger.debug(f"{view_name} view: {entity_count} entities in DXF")
+                    except:
+                        pass
+
+                    logger.info(f"Created {view_name} view: {output_dxf_file}")
+
+                except Exception as e:
+                    logger.error(f"Failed to generate {view_name} view: {str(e)}")
+                    raise DrawingViewsError(f"View generation failed for {view_name}: {str(e)}")
+
+            logger.info(f"Successfully generated {len(output_files)} drawing views as DXF files")
+            return output_files
+
+        except Exception as e:
+            logger.error(f"Drawing views generation failed: {str(e)}")
+            raise DrawingViewsError(f"Failed to generate views: {str(e)}")
+
+        finally:
+            # Clean up FreeCAD document
+            try:
+                if FreeCAD.ActiveDocument:
+                    FreeCAD.closeDocument(doc_name)
+            except Exception as e:
+                logger.warning(f"Failed to close FreeCAD document: {str(e)}")

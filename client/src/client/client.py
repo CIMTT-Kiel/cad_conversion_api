@@ -393,6 +393,106 @@ class CADConverterClient:
         except Exception as e:
             raise CADClientError(f"Analysis failed: {str(e)}") from e
 
+    def to_drawing_views(
+        self,
+        input_file: Union[str, Path],
+        output_dir: Union[str, Path]
+    ) -> Dict[str, Any]:
+        """
+        Generate technical drawing views from a STEP file as DXF files.
+
+        Creates orthographic projections similar to technical drawings:
+        - Top view
+        - Front view
+        - Side view
+
+        Args:
+            input_file: Input STEP file (.step, .stp)
+            output_dir: Directory to extract and save DXF view files
+
+        Returns:
+            Dictionary with results:
+            - success: Boolean indicating success
+            - views: List of view names generated
+            - output_dir: Directory where DXF views were saved
+            - total_views: Number of views generated
+
+        Note:
+            DXF files can be opened with any CAD software like FreeCAD,
+            AutoCAD, LibreCAD, or online DXF viewers.
+
+        Example:
+            result = client.to_drawing_views("model.step", "./drawings")
+            print(f"Generated {len(result['views'])} technical DXF views")
+        """
+        import zipfile
+
+        if not self.analyser_url:
+            raise CADClientError("Analyser service URL not configured")
+
+        input_path = Path(input_file)
+        output_path = Path(output_dir)
+
+        if not input_path.exists():
+            raise CADClientError(f"File not found: {input_path}")
+
+        if input_path.suffix.lower() not in [".step", ".stp"]:
+            raise CADClientError("Drawing views only support STEP files (.step, .stp)")
+
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"Generating drawing views: {input_path}")
+
+        try:
+            # Send request to analyser service
+            with open(input_path, "rb") as f:
+                response = requests.post(
+                    f"{self.analyser_url}/to_drawing_views",
+                    files={"file": (input_path.name, f)},
+                    timeout=self.timeout,
+                    stream=True
+                )
+
+            response.raise_for_status()
+
+            # Save ZIP file temporarily
+            zip_file = output_path / f"{input_path.stem}_drawing_views.zip"
+            with open(zip_file, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+
+            # Extract ZIP file
+            with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+                zip_ref.extractall(output_path)
+
+            # Get list of extracted DXF files
+            extracted_files = list(output_path.glob("*.dxf"))
+            view_names = [f.stem for f in extracted_files]
+
+            # Remove ZIP file after extraction
+            try:
+                zip_file.unlink()
+                logger.debug(f"Removed ZIP file: {zip_file}")
+            except Exception as e:
+                logger.warning(f"Failed to remove ZIP file: {str(e)}")
+
+            logger.info(f"Drawing views generated: {len(view_names)} DXF views saved to {output_path}")
+
+            return {
+                "success": True,
+                "views": view_names,
+                "output_dir": str(output_path),
+                "total_views": len(view_names)
+            }
+
+        except requests.RequestException as e:
+            raise CADClientError(f"Drawing views request failed: {str(e)}") from e
+        except zipfile.BadZipFile as e:
+            raise CADClientError(f"Invalid ZIP file received: {str(e)}") from e
+        except Exception as e:
+            raise CADClientError(f"Drawing views generation failed: {str(e)}") from e
+
     def to_multiview(
         self,
         input_file: Union[str, Path],
