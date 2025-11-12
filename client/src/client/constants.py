@@ -6,18 +6,15 @@ the project structure easier and more maintainable.
 
 Examples
 --------
->>> from client import constants
->>> # get Path object for the project root directory
->>> constants.PATHS.ROOT
->>> # get Path object for the config directory
->>> constants.PATHS.CONFIG
+from client import constants
+# get Path object for the project root directory
+constants.PATHS.ROOT
 """
 from pathlib import Path
 from collections import namedtuple
 
 
 # Paths
-# From client/src/client/constants.py: parents[3] gets to project root
 _ROOT = Path(__file__).parents[3]
 _path_dict = {
     "ROOT": _ROOT,

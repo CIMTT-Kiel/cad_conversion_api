@@ -6,8 +6,6 @@ Python-Client für die CAD Preprocessing API Services.
 
 ```bash
 cd client
-pip install -e .
-# oder mit uv
 uv sync
 ```
 
@@ -39,35 +37,15 @@ timeout: 300
 
 Für lokale Overrides können Sie `config/client.local.yaml` erstellen (wird nicht ins Git committed).
 
-### 2. Umgebungsvariablen
-
-```bash
-# .env Datei erstellen
-cp .env.example .env
-
-# Bearbeiten
-CAD_API_HOST=172.20.0.1
-CAD_API_TIMEOUT=300
-```
-
-Oder direkt im Terminal:
-
-```bash
-export CAD_API_HOST=172.20.0.1
-export CAD_CONVERTER_URL=http://172.20.0.1:8001
-export CAD_EMBEDDING_URL=http://172.20.0.1:8002
-export CAD_ANALYSER_URL=http://172.20.0.1:8003
-```
 
 ### 3. Direkt im Code
 
 ```python
 from client import CADConverterClient
 
-# Mit Host-IP (einfachste Methode)
 client = CADConverterClient(host="172.20.0.1")
 
-# Oder mit vollständigen URLs
+# Oder mit vollständigen URLs inklusive den Ports
 client = CADConverterClient(
     converter_url="http://172.20.0.1:8001",
     embedding_url="http://172.20.0.1:8002",
@@ -77,7 +55,7 @@ client = CADConverterClient(
 
 ## 📖 Verwendung
 
-### Basis-Verwendung mit config.yaml
+### mit bestehender config.yaml
 
 ```python
 from client import CADConverterClient
@@ -101,9 +79,11 @@ print(f"STL erstellt: {stl_file}")
 ply_file = client.convert_to_ply("model.step", "output.ply")
 print(f"PLY erstellt: {ply_file}")
 
-# VecSet Embedding generieren
+# VecSet Embedding generieren entsprechend sdf model aus 3DShapeToVecset Paper
 vecset_file = client.convert_to_vecset("model.step", "embedding.npy")
 print(f"Embedding erstellt: {vecset_file}")
+
+...
 ```
 
 ### CAD-Datei analysieren
@@ -121,38 +101,6 @@ for surface in analysis['surfaces']:
     print(f"  - {surface['surface_type']}: {surface['area']:.2f}")
 ```
 
-### Fehlerbehandlung
-
-```python
-from client import CADClientError
-
-try:
-    stl_file = client.convert_to_stl("model.step", "output.stl")
-except CADClientError as e:
-    print(f"Konvertierung fehlgeschlagen: {e}")
-```
-
-## 🎯 Beispiele
-
-```bash
-# Beispiel-Script ausführen
-python example.py
-```
-
-## 🔧 Erweiterte Konfiguration
-
-### Mehrere Server-Umgebungen
-
-Erstellen Sie verschiedene Config-Files im zentralen `/config` Verzeichnis:
-
-```bash
-config/
-├── client.yaml               # Default (wird automatisch geladen)
-├── client.local.yaml         # Lokale Überschreibung (in .gitignore)
-├── client.production.yaml    # Produktions-Server
-├── client.development.yaml   # Entwicklungs-Server
-```
-
 Verwendung:
 
 ```python
@@ -160,31 +108,7 @@ Verwendung:
 client = CADConverterClient(config_file="config/client.production.yaml")
 ```
 
-### Timeout anpassen
-
-```python
-# Längerer Timeout für große Dateien
-client = CADConverterClient(host="172.20.0.1", timeout=600)
-```
-
-### Nur bestimmte Services nutzen
-
-```python
-# Nur Converter Service
-client = CADConverterClient(
-    converter_url="http://172.20.0.1:8001",
-    embedding_url=None,  # Nicht nutzen
-    analyser_url=None    # Nicht nutzen
-)
-```
-
-## 📊 API-Referenz
-
-### CADConverterClient
-
-#### `__init__(host=None, converter_url=None, embedding_url=None, analyser_url=None, timeout=None, config_file=None)`
-
-Initialisiert den Client.
+## 📊 API-Referenz - CADConverterClient
 
 **Parameter:**
 - `host`: Server-IP oder Hostname
@@ -196,7 +120,7 @@ Initialisiert den Client.
 
 #### `convert_to_stl(input_file, output_file=None) -> Path`
 
-Konvertiert CAD-Datei zu STL.
+Konvertiert CAD-Datei zu 2D Oberflächenvernetzung -> STL.
 
 #### `convert_to_ply(input_file, output_file=None) -> Path`
 
@@ -206,6 +130,22 @@ Konvertiert CAD-Datei zu PLY (Punktwolke).
 
 Generiert VecSet Embedding (.npy).
 
+#### `to_3D_mesh(input_file, output_file=None) -> Path`
+
+Generiert eine 3D Vernetzung des gegebenen Bauteils. Netz wird mittels gmsh erstellt. Vernetzung komplexer Geometrien und Baugruppen kann zu unerwartetem Verhlten und falils führen. Netze sollten immer geprüft werden.  
+
+#### `to_voxel(input_file, output_file, resolution) -> Path`
+
+Generiet eine Voxel-Repräsentation des Bauteils in ein resolution^3 grid 
+
+#### to_multiview(input_file, output_file, total_imgs, mode) -> Path`
+
+Erstellt gerenderte Ansichten des Bauteils als .png files inklusive Daten zur Kameraposition. Die Ansichten werden Automatisch gleichmäßig um das Bauteil verteilt. total_img gibt an wie viele Bilder erzeugt werden sollen. 
+
+#### to_technical_drawing_views(input_file, output_file) -> Path (.dxf)
+
+Erstellt die drei Standardansichten entsprechend einer technischen Zeichnung. Es ist nur die Geometrie abgebildet, keine Maße. ACHTUNG: Funktioniert nicht zu 100% robust. Teils fehlen zB. einzelne Lininen oder Kreisbögen. 
+
 #### `analyse_cad(input_file) -> Dict`
 
 Analysiert STEP-Datei und gibt Geometrie-Statistiken zurück.
@@ -214,69 +154,4 @@ Analysiert STEP-Datei und gibt Geometrie-Statistiken zurück.
 
 Prüft Status aller konfigurierten Services.
 
-## 🔍 Troubleshooting
-
-### "Config file not found"
-
-```python
-# Prüfe, ob Config-Datei existiert
-from pathlib import Path
-print(Path("config/client.yaml").exists())
-
-# Verwende absolute Pfade wenn nötig
-client = CADConverterClient(config_file="/absolute/path/to/config/client.yaml")
-```
-
-### "Service unreachable"
-
-```bash
-# Prüfe, ob Services laufen
-curl http://172.20.0.1:8001/health
-curl http://172.20.0.1:8002/health
-curl http://172.20.0.1:8003/health
-
-# Prüfe Firewall
-sudo ufw status
-```
-
-### "PyYAML not installed"
-
-```bash
-pip install pyyaml
-# oder
-uv pip install pyyaml
-```
-
-## 📝 Beispiel-Output
-
-```python
->>> client = CADConverterClient(host="172.20.0.1")
->>> status = client.get_service_status()
->>> print(status)
-{
-    'converter_service': {
-        'status': 'healthy',
-        'url': 'http://172.20.0.1:8001'
-    },
-    'embedding_service': {
-        'status': 'healthy',
-        'url': 'http://172.20.0.1:8002'
-    },
-    'analyser_service': {
-        'status': 'healthy',
-        'url': 'http://172.20.0.1:8003'
-    }
-}
-
->>> analysis = client.analyse_cad("sample.step")
->>> print(analysis['surface_type_counts'])
-{
-    'Plane': 12,
-    'Cylinder': 8,
-    'BSpline Surface': 22
-}
-```
-
-## 📄 License
-
-MIT License
+...

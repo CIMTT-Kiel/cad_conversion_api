@@ -1,5 +1,3 @@
-"""CAD Conversion API Test Suite - Comprehensive functionality testing."""
-
 from pathlib import Path
 from client.client import CADConverterClient
 import logging
@@ -25,12 +23,10 @@ class TestResults:
         self.tests.append({"name": name, "status": status, "message": message, "duration": duration})
 
     def print_summary(self):
-        """Print test execution summary."""
         print(f"\n{'=' * 70}\nTEST SUMMARY\n{'=' * 70}")
         print(f"Total Tests:    {self.total}")
-        print(f"Passed:         {self.passed} ✓")
-        print(f"Failed:         {self.failed} ✗")
-        print(f"Skipped:        {self.skipped} ○")
+        print(f"Passed:         {self.passed} ")
+        print(f"Failed:         {self.failed} ")
         print("=" * 70)
 
         if self.failed > 0:
