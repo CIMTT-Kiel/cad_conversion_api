@@ -14,13 +14,15 @@ ports:
   converter: 8001
   embedding: 8003
   analyser: 8002
+  rendering: 8004
 
 # Option 2: Individuelle URLs (überschreibt host + ports)
 # Nur aktivieren wenn Services auf verschiedenen Servern laufen
 urls:
   converter: null  # z.B. "http://192.168.1.100:8001"
-  embedding: null  # z.B. "http://192.168.1.101:8002"
-  analyser: null   # z.B. "http://192.168.1.102:8003"
+  embedding: null  # z.B. "http://192.168.1.101:8003"
+  analyser: null   # z.B. "http://192.168.1.102:8002"
+  rendering: null  # z.B. "http://192.168.1.103:8004"
 
 # Timeout für Requests in Sekunden
 timeout: 300

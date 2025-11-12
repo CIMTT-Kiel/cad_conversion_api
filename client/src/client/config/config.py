@@ -28,8 +28,8 @@ class ClientConfig:
         # Build URLs with priority: param > env > config > default
         services = [
             ("converter", converter_url, self._env_converter_url, urls.get("converter"), ports.get("converter", 8001)),
-            ("embedding", embedding_url, self._env_embedding_url, urls.get("embedding"), ports.get("embedding", 8002)),
-            ("analyser", analyser_url, self._env_analyser_url, urls.get("analyser"), ports.get("analyser", 8003)),
+            ("embedding", embedding_url, self._env_embedding_url, urls.get("embedding"), ports.get("embedding", 8003)),
+            ("analyser", analyser_url, self._env_analyser_url, urls.get("analyser"), ports.get("analyser", 8002)),
             ("rendering", rendering_url, self._env_rendering_url, urls.get("rendering"), ports.get("rendering", 8004))
         ]
 
