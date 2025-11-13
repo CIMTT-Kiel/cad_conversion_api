@@ -1,33 +1,25 @@
 # CAD API Client Configuration
-#
-# Dieses File definiert die Server-URLs für die CAD API Services.
-# Sie können entweder:
-# 1. Eine gemeinsame Host-IP verwenden (empfohlen)
-# 2. Individuelle URLs für jeden Service setzen
 
-# Option 1: Gemeinsamer Host (einfachste Methode)
-# Alle Services laufen auf demselben Server
-host: "172.20.0.1"  # Server-IP oder Hostname
+host: "149.222.200.106"  # Server-IP oder Hostname
 
-# Standard-Ports (werden mit host kombiniert)
+# ports default
 ports:
   converter: 8001
   embedding: 8003
   analyser: 8002
   rendering: 8004
 
-# Option 2: Individuelle URLs (überschreibt host + ports)
-# Nur aktivieren wenn Services auf verschiedenen Servern laufen
+# Option 2: Individuelle URLs falls Services auf verschiedenen Servern laufen
 urls:
-  converter: null  # z.B. "http://192.168.1.100:8001"
-  embedding: null  # z.B. "http://192.168.1.101:8003"
-  analyser: null   # z.B. "http://192.168.1.102:8002"
-  rendering: null  # z.B. "http://192.168.1.103:8004"
+  converter: null 
+  embedding: null  
+  analyser: null   
+  rendering: null  
 
 # Timeout für Requests in Sekunden
 timeout: 300
 
 # Logging-Konfiguration
 logging:
-  level: "DEBUG"  # DEBUG, INFO, WARNING, ERROR
+  level: "DEBUG"  
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
