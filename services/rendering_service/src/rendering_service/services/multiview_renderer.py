@@ -1,7 +1,6 @@
 """
 STEP to Image Renderer
-Konvertiert STEP-Dateien in orthogonale PNG-Ansichten mittels pythonocc und pyrender.
-Unterstützt drei Rendering-Modi: shaded, wireframe, shaded_with_edges
+Renders multiple PNG images from a STEP file using OCC and Pyrender according to the RotationNet Approach - with angle information and render modi.
 """
 
 import os
@@ -33,20 +32,20 @@ except ImportError as e:
 
 def extract_edges_from_step(step_file, deflection=0.1):
     """
-    Extrahiert geometrische Kanten direkt aus der STEP-Datei.
+    extract  edges from the STEP file.
 
     Args:
-        step_file: Pfad zur STEP-Eingabedatei
-        deflection: Genauigkeit der Kantendiskretisierung
+        step_file: path to file
+        deflection: tesselation accuracy
 
     Returns:
-        tuple: (edge_lines, bounds) - Liste von Linien und Bounding Box
+        tuple: (edge_lines, bounds) - list of edge segments and bounding box
     """
     reader = STEPControl_Reader()
     status = reader.ReadFile(step_file)
 
     if status != 1:
-        raise RuntimeError(f"STEP-Datei konnte nicht gelesen werden: {step_file}")
+        raise RuntimeError(f"STEP-file not found: {step_file}")
 
     reader.TransferRoots()
     shape = reader.OneShape()
@@ -78,7 +77,6 @@ def extract_edges_from_step(step_file, deflection=0.1):
 
         edge_explorer.Next()
 
-    print(f"Extrahiert: {len(edge_lines)} geometrische Kantensegmente")
     return edge_lines, bounds
 
 
@@ -88,7 +86,7 @@ def convert_step_to_stl(step_file, stl_path, linear_deflection=0.1):
     status = reader.ReadFile(step_file)
 
     if status != 1:
-        raise RuntimeError(f"STEP-Datei konnte nicht gelesen werden: {step_file}")
+        raise RuntimeError(f"STEP-file not found: {step_file}")
 
     reader.TransferRoots()
     shape = reader.OneShape()
@@ -103,33 +101,31 @@ def convert_step_to_stl(step_file, stl_path, linear_deflection=0.1):
 
 def filter_silhouette_edges(edge_lines, edge_face_data, view_direction, box_center):
     """
-    Filtert Kanten, die Silhouetten bilden (wo angrenzende Flächen in unterschiedliche Richtungen zeigen).
+    filter silhouette edges based on view direction.
 
     Args:
-        edge_lines: Liste aller Kantensegmente
-        edge_face_data: Liste mit (edge_idx, face_normals) für jede Kante
-        view_direction: Kamera-Blickrichtung (normalisiert)
-        box_center: Zentrum des Objekts
+        edge_lines: list of edge segments
+        edge_face_data: list of (segment_index, [face_normals])
+        view_direction: camera view direction
+        box_center: center of the object bounding box
 
     Returns:
-        list: Gefilterte Liste von Kantensegmenten (nur Silhouetten)
+        list: silhouette edge segments only
     """
     silhouette_edges = []
 
     for seg_idx, face_normals in edge_face_data:
         if len(face_normals) == 0:
-            # Freie Kante (nur eine Fläche) -> immer Silhouette
+            # always visible
             silhouette_edges.append(edge_lines[seg_idx])
         elif len(face_normals) == 1:
-            # Randkante -> immer sichtbar
+            # always visible 
             silhouette_edges.append(edge_lines[seg_idx])
         elif len(face_normals) >= 2:
-            # Innere Kante: Prüfe ob die Flächen in unterschiedliche Richtungen zeigen
-            # Eine Fläche zeigt zur Kamera, die andere weg -> Silhouette
+            # inner angle between face normals and view direction
             dot_products = [np.dot(n, view_direction) for n in face_normals]
 
-            # Silhouette wenn die Flächen in unterschiedliche Richtungen zeigen
-            # (eine zur Kamera, eine weg)
+            # if signs differ, it's a silhouette edge
             if any(d > 0.01 for d in dot_products) and any(d < -0.01 for d in dot_products):
                 silhouette_edges.append(edge_lines[seg_idx])
 
@@ -138,29 +134,29 @@ def filter_silhouette_edges(edge_lines, edge_face_data, view_direction, box_cent
 
 def generate_camera_positions(num_views, box_center, cam_distance):
     """
-    Generiert gleichmäßig verteilte Kamerapositionen auf einer Sphäre.
+    generate camera positions on a sphere around the object with regulized patterns according to total positions by fibonacci-spiral.
 
     Args:
-        num_views: Anzahl der gewünschten Ansichten
-        box_center: Zentrum des Objekts
-        cam_distance: Abstand der Kamera vom Zentrum
+        num_views: total number of views
+        box_center: center of the object bounding box
+        cam_distance: distance from box center
 
     Returns:
-        list: Liste von (name, position, up_vector) Tupeln
+        list: camera position dicts with 'name', 'position', 'direction', 'up_vector', 'azimuth', 'elevation'
     """
     positions = []
 
-    # Fibonacci-Spirale auf Sphäre für gleichmäßige Verteilung
+
     golden_ratio = (1 + np.sqrt(5)) / 2
 
     for i in range(num_views):
-        # Theta (Polarwinkel): 0 bis pi
+        # Theta elevation in rad
         theta = np.arccos(1 - 2 * (i + 0.5) / num_views)
 
-        # Phi (Azimutwinkel): 0 bis 2*pi
+        # Phi azimuth in rad
         phi = 2 * np.pi * i / golden_ratio
 
-        # Sphärische zu kartesische Koordinaten
+        #  spherical to Cartesian coordiates
         x = np.sin(theta) * np.cos(phi)
         y = np.sin(theta) * np.sin(phi)
         z = np.cos(theta)
@@ -168,14 +164,14 @@ def generate_camera_positions(num_views, box_center, cam_distance):
         direction = np.array([x, y, z])
         cam_pos = box_center + direction * cam_distance
 
-        # Up-Vektor: Standard ist Z-up, aber anpassen wenn nötig
+        # define default up direction by z axis
         up = np.array([0, 0, 1])
 
-        # Wenn Kamera von oben oder unten schaut, nutze Y als Up
+        # avoid singularity at poles with the up vector
         if abs(z) > 0.9:
             up = np.array([0, 1, 0])
 
-        # Name basierend auf Position
+        # compute angle and elevation in degrees for file name
         angle_deg = int(np.degrees(phi) % 360)
         elev_deg = int(np.degrees(theta))
         name = f"view_{i:03d}_az{angle_deg:03d}_el{elev_deg:03d}"
@@ -193,7 +189,7 @@ def generate_camera_positions(num_views, box_center, cam_distance):
 
 
 def create_camera_pose(cam_pos, target, up_vector):
-    """Erstellt Kamera-Transformationsmatrix."""
+    """generate camera pose matrix from position, target and up vector."""
     forward = target - cam_pos
     forward = forward / np.linalg.norm(forward)
 
@@ -217,36 +213,35 @@ def render_geometry(stl_path, edge_lines, output_dir, basename,
                    edge_color=(0.1, 0.1, 0.1), edge_width=2.0, transparency=1.0,
                    total_imgs=3, edge_face_data=None):
     """
-    Rendert Geometrie in verschiedenen Modi.
+    render multiple images from different perspectives.
 
     Args:
-        stl_path: Pfad zur STL-Datei
-        edge_lines: Geometrische Kanten aus STEP
-        output_dir: Ausgabeverzeichnis
-        basename: Basisname der Dateien
-        resolution: Bildgröße (width, height)
+        stl_path: path to STL file
+        edge_lines: list of edge segments
+        output_dir: directory to save images
+        basename: base name for image files
+        resolution: (width, height) of images
         render_mode: 'shaded', 'wireframe', 'shaded_with_edges'
-        edge_color: RGB-Farbe für Kanten (0-1)
-        edge_width: Kantenbreite in Pixeln
-        transparency: Transparenz 0.0 (durchsichtig) bis 1.0 (opak)
-        total_imgs: Anzahl der Perspektiven (gleichmäßig verteilt)
-        edge_face_data: Optional - Face-Daten für Silhouetten-Erkennung (nur für 'shaded' Modus)
-
+        edge_color: RGB color for edges (0-1)
+        edge_width: width of edges in pixels
+        transparency: transparency 0.0 (transparent) to 1.0 (opaque)
+        total_imgs: total number of images to render
+        edge_face_data: list of (segment_index, [face_normals]) for silhouette detection
     Returns:
         dict: {'images': list, 'perspectives': list}
     """
     if not RENDERING_AVAILABLE:
-        raise RuntimeError(f"Rendering nicht verfügbar: {IMPORT_ERROR}")
+        raise RuntimeError(f"Rendering was not successfull!")
 
     w, h = resolution
 
-    # Lade Mesh nur wenn benötigt (shaded Modi)
+    # load file
     mesh = None
     if render_mode in ['shaded', 'shaded_with_edges']:
         mesh = trimesh.load_mesh(stl_path, force='mesh')
         bounds = mesh.bounds
     else:
-        # Für Wireframe: Bounds aus Edge-Lines berechnen
+        # only edges for wireframe modus
         all_points = []
         for line in edge_lines:
             all_points.extend(line)
@@ -256,8 +251,8 @@ def render_geometry(stl_path, edge_lines, output_dir, basename,
     box_center = (bounds[0] + bounds[1]) / 2
     box_size = np.linalg.norm(bounds[1] - bounds[0])
 
-    print(f"Rendering-Modus: {render_mode}")
-    print(f"Bounding Box: {bounds[0]} bis {bounds[1]}")
+    print(f"modus: {render_mode}")
+    print(f"bb: {bounds[0]} to {bounds[1]}")
 
     # Szene erstellen
     scene = pyrender.Scene(bg_color=[1.0, 1.0, 1.0, 1.0], ambient_light=[0.3, 0.3, 0.3])
@@ -275,7 +270,7 @@ def render_geometry(stl_path, edge_lines, output_dir, basename,
         pmesh = pyrender.Mesh.from_trimesh(mesh, material=material, smooth=False)
         scene.add(pmesh)
 
-        # Beleuchtung
+        # Lightning 
         scene.add(pyrender.DirectionalLight(color=[1.0, 1.0, 1.0], intensity=4.0),
                  pose=np.array([[1,0,0,3],[0,1,0,-3],[0,0,1,5],[0,0,0,1]]))
         scene.add(pyrender.DirectionalLight(color=[1.0, 1.0, 1.0], intensity=2.5),
@@ -283,10 +278,10 @@ def render_geometry(stl_path, edge_lines, output_dir, basename,
         scene.add(pyrender.DirectionalLight(color=[0.9, 0.9, 1.0], intensity=1.5),
                  pose=np.array([[1,0,0,0],[0,1,0,5],[0,0,1,2],[0,0,0,1]]))
 
-    # Renderer erstellen
+    # initialize renderer
     renderer = pyrender.OffscreenRenderer(viewport_width=w, viewport_height=h)
 
-    # Generiere Kamerapositionen
+    # get camera positions
     cam_distance = box_size * 2.5
     camera_views = generate_camera_positions(total_imgs, box_center, cam_distance)
 
@@ -306,28 +301,27 @@ def render_geometry(stl_path, edge_lines, output_dir, basename,
         camera = pyrender.PerspectiveCamera(yfov=np.pi / 4.0, aspectRatio=w/h)
         cam_node = scene.add(camera, pose=camera_pose)
 
-        # Render
         color, depth = renderer.render(scene)
 
-        # Füge Kanten hinzu
+        # add edges
         edges_to_draw = edge_lines
         if render_mode == 'shaded' and edge_lines and edge_face_data:
-            # Filtere Silhouetten-Kanten
+            # filter silhouette edges only
             edges_to_draw = filter_silhouette_edges(edge_lines, edge_face_data, view_direction, box_center)
             if edges_to_draw:
                 color = draw_edges_on_image(color, edges_to_draw, camera_pose,
                                            w, h, box_center, cam_distance,
                                            edge_color, edge_width)
         elif render_mode in ['wireframe', 'shaded_with_edges'] and edge_lines:
-            # Projiziere alle 3D-Kanten auf 2D-Bildebene
+            # process all edges on image
             color = draw_edges_on_image(color, edge_lines, camera_pose,
                                        w, h, box_center, cam_distance,
                                        edge_color, edge_width)
 
-        # Speichern
+        # sace to image file
         output_path = os.path.join(output_dir, f"{basename}_{view_name}.png")
         imageio.imwrite(output_path, color)
-        print(f"✅ Gespeichert: {output_path}")
+        print(f"Saved file: {output_path}")
 
         rendered_images.append(f"{basename}_{view_name}.png")
         perspectives.append({
@@ -350,13 +344,13 @@ def render_geometry(stl_path, edge_lines, output_dir, basename,
 
 def draw_edges_on_image(image, edge_lines, camera_pose, width, height,
                         center, distance, edge_color, edge_width):
-    """Zeichnet 3D-Kanten auf 2D-Bild durch Projektion."""
+    """Draw edges on rendered image."""
     from scipy import ndimage
 
     # Create a writable copy of the image
     image = np.array(image, copy=True)
 
-    # Erstelle View- und Projection-Matrix
+    # generate view and projection matrices
     view_matrix = np.linalg.inv(camera_pose)
     fov = np.pi / 4.0
     aspect = width / height
@@ -370,36 +364,36 @@ def draw_edges_on_image(image, edge_lines, camera_pose, width, height,
         [0, 0, -1, 0]
     ])
 
-    # Maske für Kanten
+    # get mask for edges
     edge_mask = np.zeros((height, width), dtype=bool)
 
     for line in edge_lines:
         p1, p2 = np.array(line[0]), np.array(line[1])
 
-        # Transformiere zu Clip-Space
+        # transform to clip space
         p1_clip = proj_matrix @ view_matrix @ np.append(p1, 1)
         p2_clip = proj_matrix @ view_matrix @ np.append(p2, 1)
 
-        # Perspective Division
+        # perspective divide
         if abs(p1_clip[3]) > 1e-6 and abs(p2_clip[3]) > 1e-6:
             p1_ndc = p1_clip[:3] / p1_clip[3]
             p2_ndc = p2_clip[:3] / p2_clip[3]
 
-            # Zu Screen-Space
+            # to screen space
             x1 = int((p1_ndc[0] + 1) * width / 2)
             y1 = int((1 - p1_ndc[1]) * height / 2)
             x2 = int((p2_ndc[0] + 1) * width / 2)
             y2 = int((1 - p2_ndc[1]) * height / 2)
 
-            # Zeichne Linie (Bresenham-ähnlich)
+            # draw lines
             if 0 <= x1 < width and 0 <= y1 < height and 0 <= x2 < width and 0 <= y2 < height:
                 draw_line(edge_mask, x1, y1, x2, y2)
 
-    # Verdicke Kanten
+    # thicken the edges
     if edge_width > 1:
         edge_mask = ndimage.binary_dilation(edge_mask, iterations=int(edge_width))
 
-    # Überlage auf Bild
+    # project to image
     edge_color_rgb = (np.array(edge_color) * 255).astype(np.uint8)
     image[edge_mask] = edge_color_rgb
 
@@ -436,21 +430,20 @@ def step_to_images(step_file, part_number, output_dir="./renders",
                    edge_color=(0.1, 0.1, 0.1), edge_width=2.0, transparency=1.0,
                    total_imgs=3):
     """
-    Hauptfunktion: Konvertiert STEP-Datei zu PNG-Ansichten.
+    Render multiple images from a STEP file.
 
     Args:
-        step_file: Pfad zur STEP-Datei
-        part_number: Teil-Identifikator
-        output_dir: Ausgabeverzeichnis
-        resolution: Bildgröße (width, height)
-        stl_deflection: Tessellierungs-Genauigkeit
-        cleanup_stl: STL nach Rendering löschen
+        step_file: path to STEP file
+        part_number: identifier for the part
+        output_dir: directory to save images
+        resolution: (width, height) of images
+        stl_deflection: tesselation accuracy for STL conversion
+        cleanup_stl: whether to delete temporary STL file after rendering
         render_mode: 'shaded', 'wireframe', 'shaded_with_edges'
-        edge_color: RGB-Farbe für Kanten (0-1)
-        edge_width: Kantenbreite in Pixeln
-        transparency: Transparenz 0.0 (durchsichtig) bis 1.0 (opak/undurchsichtig)
-        total_imgs: Anzahl der Perspektiven (gleichmäßig verteilt auf Sphäre)
-
+        edge_color: RGB color for edges (0-1)
+        edge_width: width of edges in pixels
+        transparency: transparency 0.0 (transparent) to 1.0 (opaque)
+        total_imgs: total number of images to render
     Returns:
         dict: {'success': bool, 'output_dir': str, 'images': list, 'perspectives': list}
     """
@@ -465,43 +458,36 @@ def step_to_images(step_file, part_number, output_dir="./renders",
         print(f"Konvertiere: {step_file}")
         print(f"{'='*60}")
 
-        # Extrahiere geometrische Kanten
+        # extract edges and face data
         edge_lines = None
         edge_face_data = None
 
         if render_mode in ['wireframe', 'shaded_with_edges']:
-            # Vollständige Kanten ohne Face-Info
+            # all edges without face info
             edge_lines, _ = extract_edges_from_step(step_file, deflection=stl_deflection)
         elif render_mode == 'shaded':
-            # Kanten mit Face-Info für Silhouetten-Erkennung
+            # edges with face info for silhouette detection
             edge_lines, _ = extract_edges_from_step(step_file,
                                                                      deflection=stl_deflection
                                                                     )
 
-        # Erstelle STL (außer bei reinem Wireframe)
+        # generate STL for rendering
         if render_mode != 'wireframe':
             convert_step_to_stl(step_file, stl_path, linear_deflection=stl_deflection)
             print(f"✅ STL erstellt: {stl_path}")
 
-        # Render
+        # start actual rendering
         print(f"\nRendere {total_imgs} Ansichten...")
         render_result = render_geometry(stl_path, edge_lines, part_output_dir, part_number,
                                        resolution, render_mode, edge_color, edge_width,
                                        transparency, total_imgs)
 
-        # Speichere Perspektiven-Daten als JSON
+        # save perspectives metadata
         import json
         perspectives_file = os.path.join(part_output_dir, f"{part_number}_perspectives.json")
         with open(perspectives_file, 'w') as f:
             json.dump(render_result['perspectives'], f, indent=2)
         print(f"💾 Perspektiven gespeichert: {perspectives_file}")
-
-        print(f"\n{'='*60}")
-        print(f"✅ Erfolgreich abgeschlossen!")
-        print(f"   Modus: {render_mode}")
-        print(f"   Ansichten: {total_imgs}")
-        print(f"   Ausgabe: {part_output_dir}")
-        print(f"{'='*60}\n")
 
         return {
             'success': True,
@@ -521,70 +507,3 @@ def step_to_images(step_file, part_number, output_dir="./renders",
             except:
                 pass
         gc.collect()
-
-
-if __name__ == "__main__":
-    # Test-STEP-Datei erstellen
-    test_step_file = "example.step"
-
-    if not os.path.exists(test_step_file):
-        print(f"Erstelle Test-STEP-Datei: {test_step_file}")
-        from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
-        from OCC.Extend.DataExchange import write_step_file
-
-        box = BRepPrimAPI_MakeBox(100, 50, 30).Shape()
-        write_step_file(box, test_step_file)
-        print("✅ Test-STEP-Datei erstellt\n")
-
-    # Rendering durchführen
-    try:
-        result = step_to_images(
-            step_file=test_step_file,
-            part_number="part_001",
-            output_dir="./renders",
-            resolution=(1280, 720),
-            stl_deflection=0.1,
-            cleanup_stl=True,
-            render_mode='shaded_with_edges',  # 'shaded', 'wireframe', 'shaded_with_edges'
-            edge_color=(0.1, 0.1, 0.1),
-            edge_width=2.0,
-            transparency=1.0,  # 0.0 = durchsichtig, 1.0 = opak
-            total_imgs=22  # Anzahl der Perspektiven
-        )
-
-        result = step_to_images(
-            step_file=test_step_file,
-            part_number="part_003",
-            output_dir="./renders",
-            resolution=(1280, 720),
-            stl_deflection=0.1,
-            cleanup_stl=False,
-            render_mode='wireframe',  # 'shaded', 'wireframe', 'shaded_with_edges'
-            edge_color=(0.1, 0.1, 0.1),
-            edge_width=2.0,
-            transparency=1.0,  # 0.0 = durchsichtig, 1.0 = opak
-            total_imgs=12  # Anzahl der Perspektiven
-        )
-
-        result = step_to_images(
-            step_file=test_step_file,
-            part_number="part_002",
-            output_dir="./renders",
-            resolution=(1280, 720),
-            stl_deflection=0.1,
-            cleanup_stl=False,
-            render_mode='shaded',  # 'shaded', 'wireframe', 'shaded_with_edges'
-            edge_color=(0.1, 0.1, 0.1),
-            edge_width=2.0,
-            transparency=1.0,  # 0.0 = durchsichtig, 1.0 = opak
-            total_imgs=12  # Anzahl der Perspektiven
-        )
-
-
-
-        print(f"Erfolgreich gerendert:")
-        for img in result['images']:
-            print(f"  - {img}")
-
-    except Exception as e:
-        print(f"❌ Fehler: {e}")

@@ -1,4 +1,4 @@
-"""Configuration loader - Priority: params > env vars > config file > defaults."""
+"""Configuration loader"""
 
 import logging, os
 from pathlib import Path
@@ -15,7 +15,7 @@ class ClientConfig:
                  embedding_url: Optional[str] = None, analyser_url: Optional[str] = None,
                  rendering_url: Optional[str] = None, timeout: Optional[int] = None,
                  config_file: Optional[str] = None):
-        """Load configuration from params, env vars, or config file."""
+        """Load configuration from config file"""
         config_data = self._load_config_file(config_file)
         self._load_env_variables()
 
@@ -57,16 +57,10 @@ class ClientConfig:
         if config_file:
             config_path = Path(config_file)
         else:
-            possible_paths = [
-                PATHS.CONFIG / "client.local.yaml",
-                PATHS.CONFIG / "client.yaml",
-                Path.cwd() / "config.yaml"
-            ]
-            config_path = next((p for p in possible_paths if p.exists()), None)
+            config_path = PATHS.CONFIG / "client.yaml"
+            logger.debug("No config file found!")
+            assert config_path.exists(), f"Config file not found in: {config_path}"
 
-        if not config_path or not config_path.exists():
-            logger.debug("No config file found, using defaults")
-            return {}
 
         try:
             import yaml
@@ -74,9 +68,6 @@ class ClientConfig:
                 config_data = yaml.safe_load(f) or {}
             logger.info(f"Config loaded: {config_path}")
             return config_data
-        except ImportError:
-            logger.warning("PyYAML not installed - install with: pip install pyyaml")
-            return {}
         except Exception as e:
             logger.warning(f"Failed to load config {config_path}: {e}")
             return {}
@@ -84,7 +75,7 @@ class ClientConfig:
     def _build_url(self, host: str, port: int) -> str:
         """Build URL from host and port."""
         if not host.startswith(("http://", "https://")):
-            host = f"http://{host}"
+            host = f"http://{host}"  # TODO use https by default in future
         return f"{host}:{port}"
 
     def to_dict(self) -> Dict[str, Any]:

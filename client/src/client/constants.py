@@ -15,7 +15,7 @@ from collections import namedtuple
 
 
 # Paths
-_ROOT = Path(__file__).parents[3]
+_ROOT = Path(__file__).parents[2]
 _path_dict = {
     "ROOT": _ROOT,
     "CONFIG": _ROOT / "config",

@@ -1,8 +1,7 @@
 """
-VecSet Conversion Service
+Embedding Service
 
-Simple service for converting PLY files to VecSet representation.
-Returns actual files instead of file paths.
+Service for converting CAD files into ML-generated embeddings
 """
 
 import logging
@@ -70,10 +69,10 @@ async def convert_to_vecset(
     export_reconstruction: bool = Form(False)
 ):
     """
-    Convert PLY file to VecSet representation and return the .npy file.
+    Convert PLY file to VecSet representation and return the .npy file. (Definition of VecSet according to 3dShapeToVecset paper)
     
     Args:
-        file: PLY file with point cloud data
+        file: PLY file with point cloud data - total number of points should match the encoder's expected input which varies by model (SDF, Occupancy, etc.)
         export_reconstruction: Whether to export reconstructed STL
         
     Returns:

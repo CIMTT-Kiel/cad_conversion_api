@@ -1,13 +1,14 @@
 from pathlib import Path
 from client.client import CADConverterClient
+from client.constants import PATHS
 import logging
 import time
 
 logging.basicConfig(level=logging.WARNING)
 
-SCRIPT_DIR = Path(__file__).parent
-SAMPLE_FILE = SCRIPT_DIR / "geometry_00000005.STEP"
-OUTPUT_DIR = SCRIPT_DIR / "test_outputs"
+
+SAMPLE_FILE = PATHS.ROOT / "testdata/geometry_00000005.STEP"
+OUTPUT_DIR = PATHS.ROOT / "testdata/test_outputs"
 
 
 class TestResults:

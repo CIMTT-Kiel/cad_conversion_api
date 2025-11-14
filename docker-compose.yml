@@ -54,7 +54,7 @@ services:
       - LOG_FORMAT=%(asctime)s | %(name)-20s | %(levelname)-8s | %(message)s
       - DISPLAY=:99
     restart: unless-stopped
-    shm_size: '2gb'  # Increase shared memory for rendering
+    shm_size: '2gb'  # shared memory for rendering
 
 volumes:
   converter_temp:

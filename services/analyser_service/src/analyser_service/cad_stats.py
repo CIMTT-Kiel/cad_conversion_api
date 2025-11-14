@@ -1,7 +1,7 @@
 """
 CAD File Analyser
 
-Provides functions to analyze CAD files and extract statistics like volume, faces, and face types.
+Provides functions to analyze CAD files and extract statistics such as volume, faces, bounding boxes etc.
 """
 
 import logging
@@ -20,7 +20,7 @@ def load_step_file(file_path: str) -> FreeCAD.Document:
     Part.insert(file_path, doc.Name)
     return doc
 
-
+# for cleaner outputs 
 SURFACE_TYPE_MAPPING = {
     'Part::GeomPlane': 'Plane',
     'Part::GeomCylinder': 'Cylinder',

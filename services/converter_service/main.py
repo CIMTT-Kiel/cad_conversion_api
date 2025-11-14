@@ -1,4 +1,4 @@
-"""CAD Converter Service - STL, PLY, VecSet, voxel conversion, mesh generation, invariants."""
+"""CAD Converter Service - Converts CAD files to ML-specific formats"""
 
 import base64, io, logging, os, tempfile, uuid, zipfile
 from pathlib import Path

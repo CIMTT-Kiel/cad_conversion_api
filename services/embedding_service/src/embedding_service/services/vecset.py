@@ -29,7 +29,7 @@ class VecSetError(Exception):
 
 class VecSetEncoder:
     """
-    Converts PLY files to VecSet representation using deep learning models.
+    Converts PLY files to VecSet representation according to 3dShapeToVecset paper
     """
 
     REQUIRED_POINT_COUNT = 8192
@@ -139,7 +139,7 @@ class VecSetEncoder:
         Args:
             ply_file: Input PLY file
             output_path: Output .npy file path
-            export_reconstruction: Whether to export reconstructed STL
+            export_reconstruction: Whether to export reconstructed STL - only for debugging/validation purposes - takes a long time!
             
         Returns:
             Conversion results and metadata

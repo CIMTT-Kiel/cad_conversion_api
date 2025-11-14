@@ -1,4 +1,4 @@
-"""CAD Converter Client - Interface for CAD conversion, embedding, and analysis services."""
+"""CAD Converter Client - Interface for CAD-preprocessing-microservices"""
 
 import json
 import logging
@@ -19,30 +19,22 @@ class CADClientError(Exception):
 
 class CADConverterClient:
     """
-    Client for CAD conversion, embedding, and analysis services.
+    Client for CAD preprocessing microservices.
 
-    Configuration methods (in priority order):
-    1. Direct parameters
-    2. Environment variables
-    3. Config file (config.yaml or config.local.yaml)
-    4. Defaults (localhost)
+    Parameters are set by the config file. Given parameters override config file values.
 
-    Examples:
-        # Method 1: Using config.yaml (simplest method)
-        client = CADConverterClient()
-
-        # Method 2: With host IP
-        client = CADConverterClient(host="172.20.0.1")
-
-        # Method 3: With full URLs
-        client = CADConverterClient(
-            converter_url="http://172.20.0.1:8001",
-            embedding_url="http://172.20.0.1:8002",
-            analyser_url="http://172.20.0.1:8003"
-        )
-
-        # Method 4: With custom config file
-        client = CADConverterClient(config_file="my_config.yaml")
+    Parameters
+    ----------
+    host : Optional[str]
+        Base host for services (overridden by individual service URLs).
+    converter_url : Optional[str]
+    embedding_url : Optional[str]
+    analyser_url : Optional[str]
+    rendering_url : Optional[str]
+    timeout : Optional[int]
+        Request timeout in seconds.
+    config_file : Optional[str]
+        Path to YAML config file.
     """
 
     def __init__(self, host: Optional[str] = None, converter_url: Optional[str] = None,
@@ -68,7 +60,7 @@ class CADConverterClient:
         output_path: Path,
         params: dict = None
     ) -> Path:
-        """Upload file and download the converted result."""
+        """Upload file and download the result."""
         file_path = Path(file_path)
 
         if not file_path.exists():
@@ -162,7 +154,7 @@ class CADConverterClient:
         output_file: Optional[Union[str, Path]] = None,
         resolution: int = 128
     ) -> Path:
-        """Convert CAD file to sparse voxel representation (.npz). Resolution: 16-512."""
+        """Convert CAD file to sparse voxel representation (.npz)"""
         if not self.converter_url:
             raise CADClientError("Converter service URL not configured")
 
@@ -192,7 +184,7 @@ class CADConverterClient:
         input_file: Union[str, Path],
         output_file: Optional[Union[str, Path]] = None
     ) -> Dict[str, Any]:
-        """Analyse CAD file - returns geometry statistics, bounding box, dimensions, surface types, and validity checks."""
+        """Analyse CAD file - returns geometry statistics, such as bounding box, dimensions, surface types etc."""
         if not self.analyser_url:
             raise CADClientError("Analyser service URL not configured")
 
@@ -316,7 +308,7 @@ class CADConverterClient:
         total_imgs: int = 20,
         part_number: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Generate multiple rendered views. Modes: shaded_with_edges, shaded, wireframe."""
+        """Generate multiple views. Modes: shaded_with_edges, shaded, wireframe."""
         import base64
 
         if not self.rendering_url:
@@ -424,7 +416,7 @@ class CADConverterClient:
         output_file: Optional[Union[str, Path]] = None,
         normalized: bool = False
     ) -> Dict[str, Any]:
-        """Calculate geometric invariants from .msh file - returns moments and invariants."""
+        """Calculate geometric invariants from .msh file - returns moments and invariants with trivial second moments to validate conversion."""
         input_path = Path(input_file)
 
         if not input_path.exists():

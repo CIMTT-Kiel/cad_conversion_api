@@ -1,6 +1,6 @@
 FROM python:3.11-slim-bookworm
 
-LABEL description="Lightweight CAD analyser service with FreeCAD headless"
+LABEL description="CAD analyser service with headless FreeCAD"
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \

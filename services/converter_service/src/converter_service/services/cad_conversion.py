@@ -25,10 +25,9 @@ class CADConversionError(Exception):
 
 
 class CADConverter:
-    """CAD Converter for STEP, JT, OBJ, and STL files to STL, PLY, or voxel formats."""
+    """CAD Converter for STEP files to various ML-specific formats."""
 
-    SUPPORTED_EXTENSIONS = {".step", ".stp", ".jt", ".obj", ".stl"}
-    DEFAULT_POINT_COUNT = 8192
+    SUPPORTED_EXTENSIONS = {".step", ".stp", ".jt", ".stl"} # STL not supported for all conversions # TODO add JT Converter
 
     def __init__(self, input_file: Union[str, Path]):
         """Initialize converter with input file."""
@@ -74,13 +73,12 @@ class CADConverter:
             logger.error(f"STL conversion failed: {str(e)}")
             raise CADConversionError(f"STL conversion failed: {str(e)}") from e
 
-    def to_ply(self, output_path: Union[str, Path], point_count: int = None) -> Path:
-        """Convert CAD file to PLY point cloud (default: 8192 points)."""
+    def to_ply(self, output_path: Union[str, Path], point_count: int = 8192) -> Path:
+        """Convert CAD file to PLY point cloud (default: 8192 points according to 3dShapeToVecset-Paper pretrained sdf-model) 
+)."""
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if point_count is None:
-            point_count = self.DEFAULT_POINT_COUNT
 
         logger.info(f"Converting to PLY: {point_count} points")
 
