@@ -11,10 +11,9 @@ ENV PYTHONUNBUFFERED=1 \
 RUN groupadd --gid 1000 appuser && \
     useradd --uid 1000 --gid appuser --shell /bin/bash --create-home appuser
 
-# Install system dependencies 
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     freecad-python3 \
-    build-essential \
     curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*

@@ -12,7 +12,6 @@ RUN groupadd --gid 1000 appuser && \
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
-    build-essential \
     libgl1 \
     libglib2.0-0 \
     curl \
