@@ -1,19 +1,9 @@
-FROM continuumio/miniconda3:latest
-
-# System dependencies (OpenGL + xvfb for headless rendering)
-RUN apt-get update && apt-get install -y \
-    libglu1-mesa xvfb libosmesa6 ffmpeg libgl1-mesa-dev libgles2-mesa-dev \
-    && rm -rf /var/lib/apt/lists/*
+FROM cimtthawk/rendering-service:latest
 
 WORKDIR /app
 
 # Copy dependencies
 COPY requirements.txt .
-
-# Create conda environment with Python 3.10 (better compatibility with pyrender)
-RUN conda create -n rendering python=3.10 -y && \
-    conda install -n rendering -c conda-forge pythonocc-core -y && \
-    conda clean -a -y
 
 # Make conda environment active by default
 SHELL ["conda", "run", "-n", "rendering", "/bin/bash", "-c"]

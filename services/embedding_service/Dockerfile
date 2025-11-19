@@ -1,32 +1,5 @@
 # Dockerfile for VecSet Service with GPU support
-FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
-
-# Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
-
-# Create non-root user for security
-RUN groupadd --gid 1000 appuser && \
-    useradd --uid 1000 --gid appuser --shell /bin/bash --create-home appuser
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    libgl1 \
-    libglib2.0-0 \
-    curl \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-
-# Download the latest installer
-ADD https://astral.sh/uv/install.sh /uv-installer.sh
-
-# Run the installer then remove it
-RUN sh /uv-installer.sh && rm /uv-installer.sh
-
-# Ensure the installed binary is on the `PATH`
-ENV PATH="/root/.local/bin/:$PATH"
+FROM cimtthawk/embedding-service:latest
 
 # Set working directory
 WORKDIR /app

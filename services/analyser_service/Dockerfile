@@ -1,26 +1,4 @@
-FROM python:3.11-slim-bookworm
-
-LABEL description="CAD analyser service with headless FreeCAD"
-
-# Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    DEBIAN_FRONTEND=noninteractive
-
-# Create non-root user for security
-RUN groupadd --gid 1000 appuser && \
-    useradd --uid 1000 --gid appuser --shell /bin/bash --create-home appuser
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    freecad-python3 \
-    curl \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.local/bin:$PATH"
+FROM cimtthawk/analyser-service:latest
 
 # Set FreeCAD Python path
 ENV PYTHONPATH="/usr/lib/freecad-python3/lib:/usr/lib/freecad/lib:$PYTHONPATH"

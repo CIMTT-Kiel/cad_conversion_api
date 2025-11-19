@@ -1,38 +1,8 @@
 # Dockerfile for CAD Conversion Service
-FROM python:3.11-slim
-
-# Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
-
-# Create non-root user for security
-RUN groupadd --gid 1000 appuser && \
-    useradd --uid 1000 --gid appuser --shell /bin/bash --create-home appuser
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1 \
-    libglib2.0-0 \
-    libgomp1 \
-    libglu1-mesa \
-    libxcursor1 \
-    libxfixes3 \
-    libxft2 \
-    libxinerama1 \
-    libxrender1 \
-    curl \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install uv for faster dependency management
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.local/bin:$PATH"
+FROM cimtthawk/converter-service:latest
 
 # Set working directory
 WORKDIR /app
-
-
-
 
 # Copy application code and change ownership
 COPY . .
