@@ -1,0 +1,36 @@
+Service;Paket/Container/Tool;Beschreibung;Lizenz;Dokumentation;
+Converter Service;libgl1;Verteilschicht zur bildschirmspezifischen Vermittlung von OpenGL-API-Aufrufen;"Apache-2.0
+";https://packages.debian.org/de/sid/libgl1;
+Converter Service;libglib2.0-0;C routines for things such as trees, hashes, lists, and strings;LGPL-2.1+;https://packages.debian.org/sid/libglib2.0-0;
+Converter Service;libgomp1;OpenMP für die C-, C++- und Fortran-Compiler aus der GNU Compiler Collection;"LGPL-2.1+
+";https://packages.debian.org/sid/libgomp1;
+Converter Service;libglu1-mesa;Schnittstellen zum Erzeugen von MIP-Maps, …;SGI-2;https://packages.debian.org/sid/libglu1-mesa;
+Converter Service;libxcursor1;Auffinden und Laden von Cursors;Debian license;https://packages.debian.org/sid/libxcursor1;
+Converter Service;libxfixes3;Clientschnittstelle für das X Window System;? Aber Commerziell erlaubt ;https://packages.debian.org/bullseye/libxfixes3;
+Converter Service;libxft2;Xft bietet eine Schrift-API für X-Anwendungen auf Client-Seite und stellt damit Clients den Schrift-Rasteresierer zur Verfügung;? Aber Commerziell erlaubt ;https://packages.debian.org/sid/libxft2;
+Converter Service;libxinerama1;Client-Schnittstelle für das X Window System für die XINERAMA-Erweiterung des X-Protokolls.;? Aber Commerziell erlaubt ;https://packages.debian.org/sid/libxinerama1;
+Converter Service;libxrender1;-Rendering-Erweiterung (Render) führt ein neues Renderingmodell für die digitale Bildzusammensetzung im X Window System ein;? Aber Commerziell erlaubt ;https://www.x.org/releases/current/doc/libXrender/libXrender.html;
+Converter Service;curl;curl ist ein Befehlszeilenwerkzeug zur Dateiübertragung mit URL-Syntax;? Aber Commerziell erlaubt ;https://packages.debian.org/bullseye/curl;
+Converter Service;ca-certificates;Liste von Zertifizierungsstellen (certification authority, CA), mit der SSL-basierte Anwendungen die Authentizität von SSL-Verbindungen überprüfen können;"GPL-2+
+";https://packages.debian.org/bookworm/ca-certificates;
+Embedding Service;python3;;;https://docs.python.org/3/;
+Embedding Service;libgl1;So.;;https://www.mesa3d.org/;
+Embedding Service;libglib2.0-0;So.;;https://docs.gtk.org/glib/;
+Embedding Service;curl;So.;;https://curl.se/docs/;
+Embedding Service;ca-certificates;So;;https://packages.debian.org/bookworm/ca-certificates;
+Embedding Service;nvidia/cuda:12.1.1-runtime;Docker Image mit Cuda ;https://developer.download.nvidia.com/licenses/NVIDIA_Deep_Learning_Container_License.pdf;https://hub.docker.com/r/nvidia/cuda;
+Rendering Service;libglu1-mesa;So.;;https://gitlab.freedesktop.org/mesa/glu;
+Rendering Service;xvfb;X server that can run on machines with no display hardware and no physical input devices. It emulates a dumb framebuffer using virtual memory;? Aber Commerziell erlaubt ;https://packages.debian.org/sid/xvfb;
+Rendering Service;libosmesa6;mittels der OpenGL-API in einem Off-Screen-Puffer zu zeichnen, ohne einen Zeichen-Kontext auf einem X-Server erzeugen zu müssen;MIT;https://packages.debian.org/sid/libs/libosmesa6;
+Rendering Service;ffmpeg;Multimedia-Rahmenwerk für alle möglichen Formate;"GPL v3+
+";https://packages.debian.org/bookworm/ffmpeg;
+Rendering Service;libgl1-mesa-dev;Eventuell unnötig ?;"Apache-2.0
+";https://packages.debian.org/de/sid/libgl1-mesa-dev;
+Rendering Service;libgles2-mesa-dev;Eventuell unnötig ?;Apache-2.0;https://www.mesa3d.org/;
+Rendering Service;pythonocc-core;Über Conda-Forge ;LGPL-3.0;https://anaconda.org/conda-forge/pythonocc-core;
+;;;;;
+Rendering Service;continuumio/miniconda3;;https://www.anaconda.com/legal/terms/terms-of-service#FeesBilling;https://docs.conda.io/en/latest/miniconda.html;
+Analyser Service;freecad-python3;;LGPL-2+;https://metadata.ftp-master.debian.org/changelogs//main/f/freecad/freecad_1.0.2+dfsg-2_copyright;
+Analyser Service;curl;So;;;
+Analyser Service;ca-certificates;So;;;
+Alle Services;uv;;Apache-2.0;https://docs.astral.sh/uv/;
