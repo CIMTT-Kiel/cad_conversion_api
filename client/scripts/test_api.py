@@ -270,7 +270,7 @@ def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     try:
-        client = CADConverterClient(host="172.20.0.1")
+        client = CADConverterClient()
     except Exception as e:
         print(f"ERROR: Failed to initialize client: {e}")
         return 1
