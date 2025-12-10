@@ -182,11 +182,28 @@ class CADConverterClient:
     def analyse_cad(
         self,
         input_file: Union[str, Path],
-        output_file: Optional[Union[str, Path]] = None
-    ) -> Dict[str, Any]:
-        """Analyse CAD file - returns geometry statistics, such as bounding box, dimensions, surface types etc."""
+        output_file: Optional[Union[str, Path]] = None,
+        output_format: str = "raw"
+    ) -> Union[Dict[str, Any], str]:
+        """
+        Analyse CAD file and return geometry statistics.
+
+        Args:
+            input_file: Path to STEP file
+            output_file: Optional output file path (for raw/markdown formats)
+            output_format: Format of analysis output:
+                - "raw": Comprehensive JSON analysis (default) - returns dict and saves to file
+                - "key_value": Flat metrics dictionary with complexity scores - returns dict only
+                - "markdown": Human-readable markdown context - returns str and optionally saves to file
+
+        Returns:
+            Dict[str, Any] for raw/key_value formats, str for markdown format
+        """
         if not self.analyser_url:
             raise CADClientError("Analyser service URL not configured")
+
+        if output_format not in ["raw", "key_value", "markdown"]:
+            raise CADClientError(f"Invalid output_format: {output_format}. Must be 'raw', 'key_value', or 'markdown'")
 
         input_path = Path(input_file)
 
@@ -196,39 +213,67 @@ class CADConverterClient:
         if input_path.suffix.lower() not in [".step", ".stp"]:
             raise CADClientError("Analyser only supports STEP files (.step, .stp)")
 
-        output_path = Path(output_file) if output_file else input_path.parent / f"{input_path.stem}_analysis.json"
-        logger.info(f"Analysing: {input_path}")
+        logger.info(f"Analysing: {input_path} (format: {output_format})")
 
         try:
             with open(input_path, "rb") as f:
                 response = requests.post(
                     f"{self.analyser_url}/analyse",
                     files={"file": (input_path.name, f)},
+                    params={"output_format": output_format},
                     timeout=self.timeout,
                     stream=True
                 )
 
             response.raise_for_status()
-            output_path.parent.mkdir(parents=True, exist_ok=True)
 
-            with open(output_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
+            # Handle different output formats
+            if output_format == "raw":
+                # Raw JSON file download (original behavior)
+                output_path = Path(output_file) if output_file else input_path.parent / f"{input_path.stem}_analysis.json"
+                output_path.parent.mkdir(parents=True, exist_ok=True)
 
-            with open(output_path, "r") as f:
-                result = json.load(f)
+                with open(output_path, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
 
-            logger.info(f"Analysis completed and saved to: {output_path}")
-            logger.info(f"Total volume: {result.get('summary', {}).get('total_volume', 0)}")
-            logger.info(f"Total surfaces: {result.get('summary', {}).get('total_faces', 0)}")
+                with open(output_path, "r") as f:
+                    result = json.load(f)
 
-            return result
+                logger.info(f"Analysis completed and saved to: {output_path}")
+                logger.info(f"Total volume: {result.get('summary', {}).get('total_volume', 0)}")
+                logger.info(f"Total surfaces: {result.get('summary', {}).get('total_faces', 0)}")
+                return result
+
+            elif output_format == "key_value":
+                # Direct JSON response with flat metrics
+                result = response.json()
+                logger.info(f"Analysis completed (key_value format)")
+                logger.info(f"OCI: {result.get('overall_complexity_index', 'N/A')}")
+                logger.info(f"Classification: {result.get('complexity_classification', 'N/A')}")
+                return result
+
+            elif output_format == "markdown":
+                # Text response with markdown context
+                markdown_text = response.text
+
+                # Optionally save to file
+                if output_file:
+                    output_path = Path(output_file)
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(output_path, "w") as f:
+                        f.write(markdown_text)
+                    logger.info(f"Analysis markdown saved to: {output_path}")
+                else:
+                    logger.info(f"Analysis completed (markdown format, {len(markdown_text)} chars)")
+
+                return markdown_text
 
         except requests.RequestException as e:
             raise CADClientError(f"Analysis request failed: {str(e)}") from e
         except json.JSONDecodeError as e:
-            raise CADClientError(f"Invalid JSON in analysis file: {str(e)}") from e
+            raise CADClientError(f"Invalid JSON in analysis response: {str(e)}") from e
         except Exception as e:
             raise CADClientError(f"Analysis failed: {str(e)}") from e
 

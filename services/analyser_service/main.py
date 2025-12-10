@@ -2,10 +2,11 @@
 
 import json, logging, tempfile, uuid, zipfile
 from pathlib import Path
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, File, HTTPException, UploadFile, Query
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from src.analyser_service.cad_stats import load_step_file, get_comprehensive_analysis
 from src.analyser_service.drawing_views import DrawingViewsGenerator, DrawingViewsError
+from src.analyser_service.metrics_processor import CADMetricsProcessor
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title="CAD Analyser Service")
@@ -35,11 +36,22 @@ async def health_check():
 
 
 @app.post("/analyse")
-async def analyse_cad_file(file: UploadFile = File(...)):
-    """Analyse CAD file - returns comprehensive geometry statistics as JSON."""
+async def analyse_cad_file(
+    file: UploadFile = File(...),
+    output_format: str = Query("raw", regex="^(raw|key_value|markdown)$")
+):
+    """
+    Analyse CAD file and return geometry statistics.
+
+    Parameters:
+    - output_format: Format of the analysis output
+      - "raw": Comprehensive JSON analysis (default)
+      - "key_value": Flat metrics dictionary with derived complexity scores
+      - "markdown": Human-readable markdown context for VLM prompts
+    """
     validate_step_file(file.filename)
     analysis_id = str(uuid.uuid4())
-    logger.info(f"Analysis {analysis_id}: {file.filename}")
+    logger.info(f"Analysis {analysis_id}: {file.filename} (format: {output_format})")
 
     temp_dir = Path(tempfile.mkdtemp(prefix=f"analysis_{analysis_id}_"))
     input_file = temp_dir / file.filename
@@ -55,13 +67,36 @@ async def analyse_cad_file(file: UploadFile = File(...)):
             'timestamp': str(input_file.stat().st_mtime)
         }
 
+        # Always create the raw JSON file (needed for key_value and markdown modes)
         json_output_file = temp_dir / f"{input_file.stem}_analysis.json"
         with open(json_output_file, 'w') as f:
             json.dump(analysis_result, f, indent=2)
 
-        logger.info(f"Analysis {analysis_id} completed")
-        return FileResponse(path=str(json_output_file), filename=f"{input_file.stem}_analysis.json",
-                          media_type="application/json", background=None)
+        # Return based on requested format
+        if output_format == "raw":
+            logger.info(f"Analysis {analysis_id} completed (raw)")
+            return FileResponse(
+                path=str(json_output_file),
+                filename=f"{input_file.stem}_analysis.json",
+                media_type="application/json",
+                background=None
+            )
+
+        elif output_format == "key_value":
+            # Process with CADMetricsProcessor to get flat metrics dictionary
+            processor = CADMetricsProcessor(json_output_file)
+            metrics = processor.calculate_metrics()
+
+            logger.info(f"Analysis {analysis_id} completed (key_value)")
+            return JSONResponse(content=metrics)
+
+        elif output_format == "markdown":
+            # Generate markdown context for VLM prompts
+            processor = CADMetricsProcessor(json_output_file)
+            markdown_context = processor.generate_vlm_context()
+
+            logger.info(f"Analysis {analysis_id} completed (markdown)")
+            return PlainTextResponse(content=markdown_context)
 
     except Exception as e:
         logger.error(f"Analysis {analysis_id} failed: {str(e)}", exc_info=True)

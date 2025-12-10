@@ -175,12 +175,13 @@ def test_invariants_calculation(client, results):
 
 
 def test_cad_analysis(client, results):
-    """Test comprehensive CAD analysis."""
+    """Test comprehensive CAD analysis with different output formats."""
     print_header("8. CAD ANALYSIS")
 
-    def analyse():
+    # Test 1: RAW format (default - comprehensive JSON)
+    def analyse_raw():
         output_file = OUTPUT_DIR / "analysis_result.json"
-        analysis = client.analyse_cad(SAMPLE_FILE, output_file)
+        analysis = client.analyse_cad(SAMPLE_FILE, output_file, output_format="raw")
 
         if not output_file.exists():
             raise Exception(f"Analysis JSON file not created: {output_file}")
@@ -206,7 +207,76 @@ def test_cad_analysis(client, results):
               f"Closed={validity.get('is_closed', False)}")
         return analysis
 
-    return run_test(analyse, results, "Comprehensive CAD Geometry Analysis")
+    run_test(analyse_raw, results, "Analysis - RAW Format (Comprehensive JSON)")
+
+    # Test 2: KEY_VALUE format (flat metrics dictionary)
+    def analyse_key_value():
+        metrics = client.analyse_cad(SAMPLE_FILE, output_format="key_value")
+
+        if not isinstance(metrics, dict):
+            raise Exception(f"Expected dict, got {type(metrics)}")
+
+        # Verify essential metrics are present
+        required_metrics = ['overall_complexity_index', 'complexity_classification',
+                          'geometric_complexity_score', 'machining_complexity_score']
+        for metric in required_metrics:
+            if metric not in metrics:
+                raise Exception(f"Metrics missing required field: {metric}")
+
+        # Save metrics to file for inspection
+        import json
+        output_file = OUTPUT_DIR / "analysis_result_metrics.json"
+        with open(output_file, 'w') as f:
+            json.dump(metrics, f, indent=2)
+
+        oci = metrics.get('overall_complexity_index', 0)
+        classification = metrics.get('complexity_classification', 'N/A')
+        geo_score = metrics.get('geometric_complexity_score', 0)
+        mach_score = metrics.get('machining_complexity_score', 0)
+        axes = metrics.get('recommended_cnc_axes', 'N/A')
+
+        print(f"\n      Metrics JSON saved: {output_file.name} ({output_file.stat().st_size} bytes)")
+        print(f"\n      Overall Complexity Index (OCI): {oci:.2f} ({classification})")
+        print(f"      Geometric Complexity: {geo_score:.2f}")
+        print(f"      Machining Complexity: {mach_score:.2f}")
+        print(f"      Recommended CNC Axes: {axes}")
+        print(f"      Total metrics calculated: {len(metrics)}")
+        return metrics
+
+    run_test(analyse_key_value, results, "Analysis - KEY_VALUE Format (Flat Metrics)")
+
+    # Test 3: MARKDOWN format (VLM context)
+    def analyse_markdown():
+        output_file = OUTPUT_DIR / "analysis_result_vlm_context.txt"
+        markdown = client.analyse_cad(SAMPLE_FILE, output_file=output_file, output_format="markdown")
+
+        if not isinstance(markdown, str):
+            raise Exception(f"Expected str, got {type(markdown)}")
+
+        if not output_file.exists():
+            raise Exception(f"Markdown file not created: {output_file}")
+
+        if len(markdown) < 100:
+            raise Exception(f"Markdown content too short: {len(markdown)} characters")
+
+        # Verify key sections are present
+        required_sections = ['# CAD Model Analysis Context', '## Geometric Properties',
+                            '## Complexity Metrics', '## Topological Structure']
+        for section in required_sections:
+            if section not in markdown:
+                raise Exception(f"Markdown missing section: {section}")
+
+        lines = markdown.split('\n')
+        print(f"\n      Markdown context saved: {output_file.name} ({output_file.stat().st_size} bytes)")
+        print(f"      Content: {len(markdown)} characters, {len(lines)} lines")
+        print(f"\n      Preview (first 300 chars):")
+        print(f"      {'-' * 60}")
+        for line in markdown[:300].split('\n'):
+            print(f"      {line}")
+        print(f"      {'-' * 60}")
+        return markdown
+
+    run_test(analyse_markdown, results, "Analysis - MARKDOWN Format (VLM Context)")
 
 
 def test_drawing_views(client, results):
